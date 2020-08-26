@@ -1,3 +1,3 @@
 (library
  (name neocaml)
- (libraries base stdio uri))
+ (libraries base stdio lwt cohttp cohttp-lwt cohttp-lwt-unix yojson))

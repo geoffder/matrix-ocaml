@@ -1,0 +1,3 @@
+(* open Base *)
+
+type t
