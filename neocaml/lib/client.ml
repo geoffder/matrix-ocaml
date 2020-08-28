@@ -6,6 +6,7 @@ open Cohttp_lwt_unix
 
 type t = { homeserver      : string
          ; user            : string
+         ; user_id         : string option
          ; device_id       : string option
          ; store_path      : string option
          ; access_token    : string option
@@ -18,6 +19,7 @@ type credential = Password of string | AuthToken of string
 let make ?device_id ?store_path ?access_token homeserver user =
   { homeserver
   ; user
+  ; user_id         = None
   ; device_id
   ; store_path
   ; access_token
@@ -25,17 +27,23 @@ let make ?device_id ?store_path ?access_token homeserver user =
   ; encrypted_rooms = Set.empty (module String)
   }
 
-(* TODO: Build request with Api.login and send to server.
- * Trying with copy of example request first... *)
+let complete_uri client pth = client.homeserver ^ pth |> Uri.of_string
+
+let response_code = Response.status |> Fn.compose Code.code_of_status
+
+let body_of_json j = j |> Yojson.Basic.to_string |> Cohttp_lwt.Body.of_string
+
+let json_of_body b = b |> Cohttp_lwt.Body.to_string >|= Yojson.Basic.from_string
+
 let login ?device_name client cred =
   let pth, content =
     Api.login ?device_name ?device_id:client.device_id client.user cred in
-  let body = content |> Yojson.Basic.to_string |> Cohttp_lwt.Body.of_string in
-  Client.post ~body (Uri.of_string (client.homeserver ^ pth))
-  >>= fun (resp, body) ->
-  let code = resp |> Response.status |> Code.code_of_status in
-  Stdio.printf "Response code: %d\n" code;
-  Stdio.printf "Headers: %s\n" (resp |> Response.headers |> Header.to_string);
-  body |> Cohttp_lwt.Body.to_string >|= fun body ->
-  Stdio.printf "Body of length: %d\n" (String.length body);
-  body
+  Client.post ~body:(body_of_json content) (complete_uri client pth)
+  >>= fun (_resp, body) ->
+  body |> json_of_body >|= fun j ->
+  let open Yojson.Basic.Util in
+  { client with
+    user_id      = j |> member "user_id" |> to_string_option
+  ; device_id    = j |> member "device_id" |> to_string_option
+  ; access_token = j |> member "access_token" |> to_string_option
+  }
