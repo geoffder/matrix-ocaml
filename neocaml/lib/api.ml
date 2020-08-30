@@ -27,4 +27,10 @@ let login ?device_name ?device_id user cred =
     [ ("device_id", json_of_option yo_string device_id)
     ; ("device_name", json_of_option yo_string device_name)
     ] |> yo_assoc in
-  (build_path "login", content)
+  (* (build_path "login", content) *)
+  (`POST, build_path "login", content)
+
+let logout ?all_devices:(all=false) access_token =
+  begin if all then "logout/all" else "logout" end
+  |> build_path ~queries:[("access_token", [ access_token ])]
+  |> fun pth -> (pth, yo_assoc [])

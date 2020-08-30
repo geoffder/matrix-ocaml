@@ -1,5 +1,5 @@
 open Base
-(* open Yojson *)
+
 open Lwt
 open Cohttp
 open Cohttp_lwt_unix
@@ -35,15 +35,52 @@ let body_of_json j = j |> Yojson.Basic.to_string |> Cohttp_lwt.Body.of_string
 
 let json_of_body b = b |> Cohttp_lwt.Body.to_string >|= Yojson.Basic.from_string
 
+let send ~f client pth =
+  f (complete_uri client pth) >>= fun (_resp, body) -> body |> json_of_body
+
+(* ctx would come from client if actually needed? See where it is used in nio *)
+(* Create call closure so that it can be recursively called until response is
+ * received, as with _send in nio async_client. *)
+let send' ?ctx ?headers ?content client meth pth =
+  let uri = complete_uri client pth in
+  let body = Option.map ~f:body_of_json content in
+  let call = Client.call ?ctx ?headers ?body meth in
+  call uri >>= fun (_resp, body) -> body |> json_of_body
+
 let login ?device_name client cred =
-  let pth, content =
+  (* let pth, content =
+   *   Api.login ?device_name ?device_id:client.device_id client.user cred in
+   * send ~f:(Client.post ~body:(body_of_json content)) client pth *)
+  let meth, pth, content =
     Api.login ?device_name ?device_id:client.device_id client.user cred in
-  Client.post ~body:(body_of_json content) (complete_uri client pth)
-  >>= fun (_resp, body) ->
-  body |> json_of_body >|= fun j ->
+  send' ~content client meth pth
+  >|= fun j ->
   let open Yojson.Basic.Util in
   { client with
     user_id      = j |> member "user_id" |> to_string_option
   ; device_id    = j |> member "device_id" |> to_string_option
   ; access_token = j |> member "access_token" |> to_string_option
   }
+
+(* The overlap between this and login is making plain some of the things that
+ * I can abstract out. Not sure that I want to fully do things the way that
+ * nio deals with the repetition. I am seeing some sense in returning a type
+ * indicating the method to use, cause then the body and path building to Client
+ * action could be abstracted into a function. *)
+let logout ?all_devices:(all_devices=false) client =
+  match client.access_token with
+  | None -> Lwt.return client
+  | Some token ->
+    let pth, content = Api.logout ~all_devices token in
+    send ~f:(Client.post ~body:(body_of_json content)) client pth
+    >|= fun _ ->
+    (* nio _handle_logout checks for ErrorResponse, doesn't clear if so... *)
+    { client with access_token = None }
+
+(* So I should make my own version of the send function that returns a json of
+ * the body (in Lwt.t monad). The methods that I need are post, get, delete,
+ * and put. They all have the same sig, except for put. So I can't just pass
+ * the function simply, I'll need to pass a sum type. Then the send method
+ * can do it's calling until answered (not 429 code). Callbacks can be called
+ * after the json is returned back to the parent function, since it knows what
+ * kind of a request it was (don't have another type just to tag it for send) *)
