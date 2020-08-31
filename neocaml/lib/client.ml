@@ -4,6 +4,8 @@ open Lwt
 open Cohttp
 open Cohttp_lwt_unix
 
+open Types
+
 type t = { homeserver      : string
          ; user            : string
          ; user_id         : string option
@@ -35,9 +37,22 @@ let body_of_json j = j |> Yojson.Basic.to_string |> Cohttp_lwt.Body.of_string
 
 let json_of_body b = b |> Cohttp_lwt.Body.to_string >|= Yojson.Basic.from_string
 
+(* Continue execution of given function if logged in. *)
+let logged_in client f =
+  match client.access_token with
+  | None ->
+    Stdio.print_endline "Not logged in.";
+    Lwt.return client
+  | Some token -> f token
+
 (* ctx would come from client if actually needed? See where it is used in nio *)
 (* Create call closure so that it can be recursively called until response is
- * received, as with _send in nio async_client. *)
+ * received (e.g. not 429 code), as with _send in nio async_client.
+ *
+ * Need to figure out my error response handing architecture (general in here
+ * and specific in the calling functions). Or have a handler that only gets called
+ * after send has returned, but it has the general cases closed in, and accepts
+ * specific ones as a parameter *)
 let send ?ctx ?headers client (meth, pth, content) =
   let uri = complete_uri client pth in
   let body = Option.map ~f:body_of_json content in
@@ -48,6 +63,7 @@ let login ?device_name client cred =
   Api.login ?device_name ?device_id:client.device_id client.user cred
   |> send client
   >|= fun j ->
+  (* TODO: handling / call backs ? *)
   let open Yojson.Basic.Util in
   { client with
     user_id      = j |> member "user_id" |> to_string_option
@@ -63,12 +79,35 @@ let logout ?all_devices:(all_devices=false) client =
     |> send client
     >|= fun _ ->
     (* nio _handle_logout checks for ErrorResponse, doesn't clear if so... *)
+    (* TODO: handling / call backs *)
     { client with access_token = None }
 
-(* So I should make my own version of the send function that returns a json of
- * the body (in Lwt.t monad). The methods that I need are post, get, delete,
- * and put. They all have the same sig, except for put. So I can't just pass
- * the function simply, I'll need to pass a sum type. Then the send method
- * can do it's calling until answered (not 429 code). Callbacks can be called
- * after the json is returned back to the parent function, since it knows what
- * kind of a request it was (don't have another type just to tag it for send) *)
+let joined_rooms client =
+  logged_in client begin fun token ->
+    Api.joined_rooms token
+    |> send client
+    >|= fun j ->
+    (* TODO: handling / call backs *)
+    Yojson.Basic.to_string j |> Stdio.print_endline;
+    client
+  end
+
+let room_messages ?stop ?dir ?lim:(lim=10) ?filter client id start =
+  logged_in client begin fun token ->
+    Api.room_messages ?stop ?dir ~lim ?filter token id start
+    |> send client
+    >|= fun j ->
+    (* TODO: handling / call backs *)
+    Yojson.Basic.to_string j |> Stdio.print_endline;
+    client
+  end
+
+let sync ?since ?timeout ?filter ?full_state:(full=false) ?set_presence client =
+  logged_in client begin fun token ->
+    Api.sync ?since ?timeout ?filter ~full_state:full ?set_presence token
+    |> send client
+    >|= fun j ->
+    (* TODO: handling / call backs *)
+    Yojson.Basic.to_string j |> Stdio.print_endline;
+    client
+  end
