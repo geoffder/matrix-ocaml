@@ -54,7 +54,47 @@ let logged_in client f =
  * and specific in the calling functions). Or have a handler that only gets called
  * after send has returned, but it has the general cases closed in, and accepts
  * specific ones as a parameter *)
-let send ?ctx ?content_type ?content_len ?_timeout client (meth, pth, content) =
+let with_timeout ?timeout ~call uri =
+  let times_up =
+    timeout
+    |> Option.value_map
+      ~default:Float.max_finite_value
+      ~f:(fun i -> i / 1000 |> Int.to_float)
+    |> Lwt_unix.sleep
+    >>= fun () -> Lwt.return_error `TimedOut in
+  let called = call uri >>= fun response -> Lwt.return_ok response in
+  Lwt.pick [ times_up; called ]
+
+(* TODO: Add in data provider. Needs re-structuring of the call closure etc. *)
+let repeat ?timeout ?(max_429s=100) ?(max_outs=100) ~call uri =
+  let rec aux n_429s n_outs =
+    with_timeout ?timeout ~call uri
+    >>= function
+    | Ok (resp, body) ->
+      if phys_equal resp.Response.status `Too_many_requests
+      then
+        if n_429s < max_429s
+        then Lwt_unix.sleep 5. >>= fun () -> aux (n_429s + 1) n_outs
+        else Lwt.return_error `Max429s
+      else Lwt.return_ok (resp, body)
+    | Error `TimedOut ->
+      if n_outs < max_outs
+      then Lwt_unix.sleep 5. >>= fun () -> aux n_429s (n_outs + 1)
+      else Lwt.return_error `MaxTimeouts in
+  aux 0 0
+
+(* TODO: Need to use repeat for th *)
+let send
+    ?ctx
+    ?content_type
+    ?content_len
+    (* ?timeout *)
+    (* ?data_provider *) (* NOTE: Need to not close body in to call before
+                          * passing to repeat in order to be able to refresh
+                          * the data used to create the body. *)
+    client
+    (meth, pth, content)
+  =
   let headers =
     ("Content-Type", Option.value ~default:"application/json" content_type)
     :: Option.value_map
