@@ -4,7 +4,8 @@ open Lwt
 open Cohttp
 open Cohttp_lwt_unix
 
-open Types
+(* open Types *)
+(* open Yojson_helpers *)
 
 type t = { homeserver      : string
          ; user            : string
@@ -53,10 +54,17 @@ let logged_in client f =
  * and specific in the calling functions). Or have a handler that only gets called
  * after send has returned, but it has the general cases closed in, and accepts
  * specific ones as a parameter *)
-let send ?ctx ?headers client (meth, pth, content) =
+let send ?ctx ?content_type ?content_len ?_timeout client (meth, pth, content) =
+  let headers =
+    ("Content-Type", Option.value ~default:"application/json" content_type)
+    :: Option.value_map
+      ~f:(fun i -> [ ("Content-Length", Int.to_string i) ])
+      ~default:[]
+      content_len
+    |> Header.of_list in
   let uri = complete_uri client pth in
   let body = Option.map ~f:body_of_json content in
-  let call = Client.call ?ctx ?headers ?body meth in
+  let call = Client.call ?ctx ~headers ?body meth in
   call uri >>= fun (_resp, body) -> body |> json_of_body
 
 let login ?device_name client cred =
