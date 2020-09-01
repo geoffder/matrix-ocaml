@@ -83,7 +83,9 @@ let repeat ?timeout ?(max_429s=100) ?(max_outs=100) ~call uri =
       else Lwt.return_error `MaxTimeouts in
   aux 0 0
 
-(* TODO: Need to use repeat for th *)
+(* TODO: Need to change call closure creation to suit repeat. Also, need to
+ * propagate error through if I am going to do it this way e.g. with repeating
+ * as they do in nio. *)
 let send
     ?ctx
     ?content_type
