@@ -108,13 +108,16 @@ let room_leave access room_id =
   let pth = "rooms/" ^ room_id ^ "/leave" in
   (`POST, build_path ~queries pth, Some (yo_assoc []))
 
-let room_forget = ()
+let room_forget access room_id =
+  let queries = query "access_token" access in
+  let pth = "rooms/" ^ room_id ^ "/forget" in
+  (`POST, build_path ~queries pth, Some (yo_assoc []))
 
 let room_messages ?stop ?dir ?lim:(lim=10) ?filter access room_id start =
   let queries =
     query_of_option "to" stop
     @ query_of_option_map ~f:Yojson.Basic.to_string "filter" filter
-    @ query_of_option_map ~f:Message_direction.to_string "dir" dir
+    @ query_of_option_map ~f:MessageDirection.to_string "dir" dir
     @ [ ("access_token", [ access ])
       ; ("from",         [ start ])
       ; ("limit",        [ Int.to_string lim ])
@@ -150,7 +153,14 @@ let joined_rooms access =
 let room_resolve_alias room_alias =
   (`GET, build_path ("directory/room/" ^ room_alias), None)
 
-let room_typing = ()
+let room_typing ?typing:(typing=true) ?timeout access room_id user_id =
+  let queries = query "access_token" access in
+  let content = [ ("typing",  Bool.to_string typing |> yo_string)
+                ; ("timeout", Option.value ~default:30000 timeout |> yo_int)
+                ] |> yo_assoc in
+  let pth = Printf.sprintf "rooms/%s/typing/%s" room_id user_id in
+  (`PUT, build_path ~queries pth, Some content)
+
 
 let update_receipt_marker = ()
 
@@ -187,10 +197,24 @@ let get_presence access user_id =
   let pth = "presence/" ^ user_id ^ "/status" in
   (`GET, build_path ~queries pth, None)
 
-let set_presence = ()
+let set_presence ?status_msg access user_id presence =
+  let queries = query "access_token" access in
+  let content =
+    [ ("presence",   Presence.to_string presence |> yo_string)
+    ; ("status_msg", json_of_option yo_string status_msg)
+    ] |> yo_assoc in
+  let pth = "presence/" ^ user_id ^ "/status" in
+  (`PUT, build_path ~queries pth, Some content)
 
-let whoami = ()
+let whoami access =
+  let queries = query "access_token" access in
+  (`GET, build_path ~queries "account/whoami", None)
 
-let room_context = ()
+let room_context ?limit access room_id event_id =
+  let queries =
+    query_of_option_map ~f:Int.to_string "limit" limit
+    @ query "access_token" access in
+  let pth = Printf.sprintf "rooms/%s/context/%s" room_id event_id in
+  (`GET, build_path ~queries pth, None)
 
 let upload_filter = ()
