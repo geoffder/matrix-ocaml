@@ -26,12 +26,12 @@ let build_path ?queries ?api_path:(api=matrix_api_path) path =
 let login ?device_name ?device_id user cred =
   let credential =
     match cred with
-    | Password str  -> [ ("type",     `String "m.login.password")
-                       ; ("user",     `String user)
-                       ; ("password", `String str)
+    | Password str  -> [ ("type",     yo_string "m.login.password")
+                       ; ("user",     yo_string user)
+                       ; ("password", yo_string str)
                        ]
-    | AuthToken str -> [ ("type",  `String "m.login.token")
-                       ; ("token", `String str)
+    | AuthToken str -> [ ("type",  yo_string "m.login.token")
+                       ; ("token", yo_string str)
                        ] in
   let content =
     credential
@@ -75,33 +75,68 @@ let room_get_event access room_id event_id =
   let pth = Printf.sprintf "rooms/%s/event/%s" room_id event_id in
   (`GET, build_path ~queries pth, None)
 
+(* TODO: Decide between passing in an already json'd body, or converting it in
+ * here (and getting the event_type string at the same time.) This applies to
+ * so other Api calls in here as well. *)
 let room_put_state ?state_key access room_id event_type body =
   let queries = query "access_token" access in
   let event_str = event_type in  (* FIXME: reminder that this shouldn't be str *)
   let key = Option.value ~default:"" state_key in
   let pth = Printf.sprintf "rooms/%s/state/%s/%s" room_id event_str key in
-  (`PUT, build_path ~queries pth, body)
+  (`PUT, build_path ~queries pth, Some body)
 
-let room_get_state_event = ()
+let room_get_state_event ?state_key access room_id event_type =
+  let queries = query "access_token" access in
+  let event_str = event_type in  (* FIXME: reminder that this shouldn't be str *)
+  let key = Option.value ~default:"" state_key in
+  let pth = Printf.sprintf "rooms/%s/state/%s/%s" room_id event_str key in
+  (`GET, build_path ~queries pth, None)
 
 let room_get_state access room_id =
   let queries = query "access_token" access in
   let pth = "rooms/" ^ room_id ^ "/state" in
   (`GET, build_path ~queries pth, None)
 
-let room_redact = ()
+let room_redact ?reason access room_id event_id tx_id =
+  let queries = query "access_token" access in
+  let content = [ ("reason", json_of_option yo_string reason) ] |> yo_assoc in
+  let pth = Printf.sprintf "rooms/%s/redact/%s/%s" room_id event_id tx_id in
+  (`PUT, build_path ~queries pth, Some content)
 
-let room_kick = ()
+let room_kick ?reason access room_id user_id =
+  let queries = query "access_token" access in
+  let content = [ ("user_id", yo_string user_id)
+                ; ("reason", json_of_option yo_string reason)
+                ] |> yo_assoc in
+  let pth = "rooms/" ^ room_id ^ "/kick" in
+  (`POST, build_path ~queries pth, Some content)
 
-let room_ban = ()
+let room_ban ?reason access room_id user_id =
+  let queries = query "access_token" access in
+  let content = [ ("user_id", yo_string user_id)
+                ; ("reason", json_of_option yo_string reason)
+                ] |> yo_assoc in
+  let pth = "rooms/" ^ room_id ^ "/ban" in
+  (`POST, build_path ~queries pth, Some content)
 
-let room_unban = ()
+let room_unban access room_id user_id =
+  let queries = query "access_token" access in
+  let content = yo_assoc [ ("user_id", yo_string user_id) ] in
+  let pth = "rooms/" ^ room_id ^ "/unban" in
+  (`POST, build_path ~queries pth, Some content)
 
-let room_invite = ()
+let room_invite access room_id user_id =
+  let queries = query "access_token" access in
+  let content = yo_assoc [ ("user_id", yo_string user_id) ] in
+  let pth = "rooms/" ^ room_id ^ "/invite" in
+  (`POST, build_path ~queries pth, Some content)
 
 let room_create = ()
 
-let join = ()
+let join access room_id =
+  let queries = query "access_token" access in
+  let pth = "join/" ^ room_id in
+  (`POST, build_path ~queries pth, Some (yo_assoc []))
 
 let room_leave access room_id =
   let queries = query "access_token" access in
@@ -125,11 +160,28 @@ let room_messages ?stop ?dir ?lim:(lim=10) ?filter access room_id start =
   let pth = "rooms/" ^ room_id ^ "/messages" in
   (`GET, build_path ~queries pth, None)
 
+(* NOTE: the body that is expected is a complex nested json. Will need to build
+ * a type to hold all the values required and has a to_json. *)
 let keys_upload = ()
 
-let keys_query = ()
+let keys_query ?since_token access user_set =
+  let queries = query "access_token" access in
+  let users = Set.to_list user_set
+              |> List.map ~f:(fun u -> u, yo_list [])
+              |> yo_assoc in
+  let content = [ ("device_keys", users)
+                ; ("token", json_of_option yo_string since_token)
+                ] |> yo_assoc in
+  (`POST, build_path ~queries "keys/query", Some content)
 
-let keys_claim = ()
+let keys_claim access user_devices =
+  let queries = query "access_token" access in
+  (* Map devices list into an alist indicating desired encryption key type. *)
+  let f (u, ds) =
+    (u, List.map ~f:(fun d -> d, yo_string "signed_curve25519") ds |> yo_assoc) in
+  let content = [ ("one_time_keys", user_devices |> List.map ~f |> yo_assoc) ]
+                |> yo_assoc in
+  (`POST, build_path ~queries "keys/claim", Some content)
 
 let to_device = ()
 
@@ -160,7 +212,6 @@ let room_typing ?typing:(typing=true) ?timeout access room_id user_id =
                 ] |> yo_assoc in
   let pth = Printf.sprintf "rooms/%s/typing/%s" room_id user_id in
   (`PUT, build_path ~queries pth, Some content)
-
 
 let update_receipt_marker = ()
 
