@@ -70,17 +70,17 @@ let repeat ?timeout ?(max_429s=100) ?(max_outs=100) ~call uri =
   let rec aux n_429s n_outs =
     with_timeout ?timeout ~call uri
     >>= function
-    | Ok (resp, body) ->
+    | Ok (resp, _body as response) ->
       if phys_equal resp.Response.status `Too_many_requests
       then
         if n_429s < max_429s
         then Lwt_unix.sleep 5. >>= fun () -> aux (n_429s + 1) n_outs
-        else Lwt.return_error `Max429s
-      else Lwt.return_ok (resp, body)
+        else Lwt.return_error "Hit maximum 'too many requests' (429) responses."
+      else Lwt.return_ok response
     | Error `TimedOut ->
       if n_outs < max_outs
       then Lwt_unix.sleep 5. >>= fun () -> aux n_429s (n_outs + 1)
-      else Lwt.return_error `MaxTimeouts in
+      else Lwt.return_error "Hit maximum timeouts." in
   aux 0 0
 
 (* TODO: Need to change call closure creation to suit repeat. Also, need to
