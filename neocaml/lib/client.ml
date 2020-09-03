@@ -34,9 +34,9 @@ let complete_uri client pth = client.homeserver ^ pth |> Uri.of_string
 
 let response_code = Response.status |> Fn.compose Code.code_of_status
 
-let body_of_json j = j |> Yojson.Basic.to_string |> Cohttp_lwt.Body.of_string
+let body_of_json j = j |> Yojson.Safe.to_string |> Cohttp_lwt.Body.of_string
 
-let json_of_body b = b |> Cohttp_lwt.Body.to_string >|= Yojson.Basic.from_string
+let json_of_body b = b |> Cohttp_lwt.Body.to_string >|= Yojson.Safe.from_string
 
 (* Continue execution of given function if logged in. *)
 let logged_in client f =
@@ -114,7 +114,7 @@ let login ?device_name client cred =
   |> send client
   >|= fun j ->
   (* TODO: handling / call backs ? *)
-  let open Yojson.Basic.Util in
+  let open Yojson.Safe.Util in
   { client with
     user_id      = j |> member "user_id" |> to_string_option
   ; device_id    = j |> member "device_id" |> to_string_option
@@ -138,7 +138,7 @@ let joined_rooms client =
     |> send client
     >|= fun j ->
     (* TODO: handling / call backs *)
-    Yojson.Basic.to_string j |> Stdio.print_endline;
+    Yojson.Safe.to_string j |> Stdio.print_endline;
     client
   end
 
@@ -148,7 +148,7 @@ let room_messages ?stop ?dir ?lim:(lim=10) ?filter client id start =
     |> send client
     >|= fun j ->
     (* TODO: handling / call backs *)
-    Yojson.Basic.to_string j |> Stdio.print_endline;
+    Yojson.Safe.to_string j |> Stdio.print_endline;
     client
   end
 
@@ -158,6 +158,6 @@ let sync ?since ?timeout ?filter ?full_state:(full=false) ?set_presence client =
     |> send client
     >|= fun j ->
     (* TODO: handling / call backs *)
-    Yojson.Basic.to_string j |> Stdio.print_endline;
+    Yojson.Safe.to_string j |> Stdio.print_endline;
     client
   end
