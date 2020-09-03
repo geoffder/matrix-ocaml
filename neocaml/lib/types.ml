@@ -1,5 +1,9 @@
 type credential = Password of string | AuthToken of string
 
+type resize_method = Scale | Crop
+
+let string_of_resize = function | Scale -> "scale" | Crop -> "crop"
+
 type api_triple = Cohttp.Code.meth * string * Yojson.Basic.t option
 
 module Presence = struct
@@ -116,6 +120,24 @@ module MatrixEvent = struct
       | Encryption of Encryption.t
       | Redaction of Redaction.t
       | Encrypted of Encrypted.t
+
+    let to_type_string = function
+      | Message           _ -> "m.room.message"
+      | Create            _ -> "m.room.create"
+      | GuestAccess       _ -> "m.room.guest_access"
+      | JoinRules         _ -> "m.room.join_rules"
+      | HistoryVisibility _ -> "m.room.history_visibility"
+      | Member            _ -> "m.room.member"
+      | CanonicalAlias    _ -> "m.room.canonical_alias"
+      | Name              _ -> "m.room.name"
+      | Topic             _ -> "m.room.topic"
+      | Avatar            _ -> "m.room.avatar"
+      | PowerLevels       _ -> "m.room.power_levels"
+      | PinnedEvents      _ -> "m.room.pinned_events"
+      | Encryption        _ -> "m.room.encryption"
+      | Redaction         _ -> "m.room.redaction"
+      | Encrypted         _ -> "m.room.encrypted"
+
   end
 
   module Call = struct
