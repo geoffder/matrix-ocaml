@@ -13,15 +13,15 @@ let query_of_option key = Option.value_map ~f:(query key) ~default:[]
 let query_of_option_map ~f key =
   Option.value_map ~f:(f |> Fn.compose (query key)) ~default:[]
 
-let build_path ?queries ?api_path:(api=matrix_api_path) path =
+let build_path ?queries ?(api_path=matrix_api_path) path =
   let q = queries |> Option.value_map ~f:Uri.encoded_of_query ~default:"" in
   (* NOTE: Removed pct_encode, was breaking paths that included '/'
    *  (and maybe '!') *)
   (* api ^ "/" ^ Uri.pct_encode path ^ "?" ^ q *)
-  api ^ "/" ^ path ^ "?" ^ q
+  api_path ^ "/" ^ path ^ "?" ^ q
 
 (* Api call funcs ->
- *  Cohttp.Code.meth * string * Yojson.Basic.t option *)
+ *  Cohttp.Code.meth * string * Yojson.Safe.t option *)
 
 let login ?device_name ?device_id user cred =
   let credential =
@@ -50,7 +50,7 @@ let sync ?since ?timeout ?filter ?full_state:(full=false) ?set_presence access =
     query_of_option "since" since
     @ query_of_option_map ~f:Int.to_string "timeout" timeout
     @ query_of_option_map ~f:Presence.to_string "set_presence" set_presence
-    @ query_of_option_map ~f:Yojson.Basic.to_string "filter" filter
+    @ query_of_option_map ~f:Yojson.Safe.to_string "filter" filter
     @ [ ("access_token", [ access ])
       ; ("full_state",   [ Bool.to_string full ])
       ] in
@@ -75,19 +75,14 @@ let room_get_event access room_id event_id =
   let pth = Printf.sprintf "rooms/%s/event/%s" room_id event_id in
   (`GET, build_path ~queries pth, None)
 
-(* TODO: Decide between passing in an already json'd body, or converting it in
- * here (and getting the event_type string at the same time.) This applies to
- * so other Api calls in here as well. *)
-let room_put_state ?state_key access room_id event_type body =
+let room_put_state ?state_key access room_id event_str body =
   let queries = query "access_token" access in
-  let event_str = event_type in  (* FIXME: reminder that this shouldn't be str *)
   let key = Option.value ~default:"" state_key in
   let pth = Printf.sprintf "rooms/%s/state/%s/%s" room_id event_str key in
   (`PUT, build_path ~queries pth, Some body)
 
-let room_get_state_event ?state_key access room_id event_type =
+let room_get_state_event ?state_key access room_id event_str =
   let queries = query "access_token" access in
-  let event_str = event_type in  (* FIXME: reminder that this shouldn't be str *)
   let key = Option.value ~default:"" state_key in
   let pth = Printf.sprintf "rooms/%s/state/%s/%s" room_id event_str key in
   (`GET, build_path ~queries pth, None)
@@ -131,7 +126,19 @@ let room_invite access room_id user_id =
   let pth = "rooms/" ^ room_id ^ "/invite" in
   (`POST, build_path ~queries pth, Some content)
 
-let room_create = ()
+(* NOTE: Invite is just a list of user_id, but initial state and power args
+ * are lists of json. Eventually these should probably be record types that
+ * are converted into json (either here or in calling method.) *)
+let room_create ?invite ?initial_state ?power_override access config =
+  let queries = query "access_token" access in
+  let power = Option.value ~default:`Null power_override in
+  let content =
+    [ ("invite", json_of_option yo_list invite)
+    ; ("initial_state", json_of_option yo_list initial_state)
+    ; ("power_level_content_override", power)
+    ] |> yo_assoc
+    |> Yojson.Safe.Util.combine @@ Room.Config.to_yojson config in
+  (`POST, build_path ~queries "createRoom", Some content)
 
 let join access room_id =
   let queries = query "access_token" access in
@@ -151,7 +158,7 @@ let room_forget access room_id =
 let room_messages ?stop ?dir ?lim:(lim=10) ?filter access room_id start =
   let queries =
     query_of_option "to" stop
-    @ query_of_option_map ~f:Yojson.Basic.to_string "filter" filter
+    @ query_of_option_map ~f:Yojson.Safe.to_string "filter" filter
     @ query_of_option_map ~f:MessageDirection.to_string "dir" dir
     @ [ ("access_token", [ access ])
       ; ("from",         [ start ])
@@ -183,15 +190,33 @@ let keys_claim access user_devices =
                 |> yo_assoc in
   (`POST, build_path ~queries "keys/claim", Some content)
 
-let to_device = ()
+(* TODO: content is of form { user_id: { device_id: msg_body } }, where device_id
+ * can be "\*" to indicate all known devices for the user. (from nio docstring).
+ * Need to decide on json conversion in here or in the client function. *)
+let to_device access event_str content tx_id =
+  let queries = query "access_token" access in
+  let pth = Printf.sprintf "sendToDevice/%s/%s" event_str tx_id in
+  (`PUT, build_path ~queries pth, Some content)
 
 let devices access =
   let queries = query "access_token" access in
   (`GET, build_path ~queries "devices", None)
 
-let update_device = ()
+(* TODO: content is supposed to be metadata with which to update the device.
+ *  Need to make a corresponding type and to_json. *)
+let update_device access device_id content =
+  let queries = query "access_token" access in
+  let pth = "devices/" ^ device_id ^ "/joined_members" in
+  (`PUT, build_path ~queries pth, Some content)
 
-let delete_devices = ()
+(* TODO: Don't know what auth_dict (auth_json) is yet, but the nio docstring
+ * says that this should first be called without it... *)
+let delete_devices ?auth_json access devices =
+  let queries = query "access_token" access in
+  let content = [ ("devices", yo_list devices)
+                ; ("auth", json_of_option yo_assoc auth_json)
+                ] |> yo_assoc in
+  (`POST, build_path ~queries "delete_devices", Some content)
 
 let joined_members access room_id =
   let queries = query "access_token" access in
@@ -213,11 +238,24 @@ let room_typing ?typing:(typing=true) ?timeout access room_id user_id =
   let pth = Printf.sprintf "rooms/%s/typing/%s" room_id user_id in
   (`PUT, build_path ~queries pth, Some content)
 
-let update_receipt_marker = ()
+let update_receipt_marker ?receipt_type access room_id event_id =
+  let queries = query "access_token" access in
+  (* Currently "m.read" is the only supported type. *)
+  let rec_type = Option.value ~default:"m.read" receipt_type in
+  let pth = Printf.sprintf "rooms/%s/receipt/%s/%s" room_id rec_type event_id in
+  (`POST, build_path ~queries pth, None)
 
-let room_read_markers = ()
+let room_read_markers ?read_event_id access room_id fully_read_event_id =
+  let queries = query "access_token" access in
+  let content = [ ("m.fully_read", yo_string fully_read_event_id)
+                ; ("m.read", json_of_option yo_string read_event_id)
+                ] |> yo_assoc in
+  let pth = "rooms/" ^ room_id ^ "/read_markers" in
+  (`POST, build_path ~queries pth, Some content)
 
-let content_repository_config = ()
+let content_repository_config access =
+  let queries = query "access_token" access in
+  (`GET, build_path ~queries ~api_path:matrix_media_path "config", None)
 
 let upload ?filename access =
   let queries =
@@ -225,9 +263,20 @@ let upload ?filename access =
     @ query "access_token" access in
   (`POST, build_path ~queries ~api_path:matrix_media_path "upload", None)
 
-let download = ()
+let download ?filename ?(allow_remote=true) server_name media_id =
+  let queries = query "allow_remote" (Bool.to_string allow_remote) in
+  let pth = Option.value_map ~f:(( ^ ) "/") ~default:"" filename
+            |> Printf.sprintf "download/%s/%s%s" server_name media_id in
+  (`GET, build_path ~queries ~api_path:matrix_media_path pth, None)
 
-let thumbnail = ()
+let thumbnail ?(allow_remote=true) server_name media_id width height resize =
+  let queries =
+    query "width" (Int.to_string width)
+    @ query "height" (Int.to_string height)
+    @ query "method" (string_of_resize resize)
+    @ query "allow_remote" (Bool.to_string allow_remote) in
+  let pth = Printf.sprintf "thumbnail/%s/%s" server_name media_id in
+  (`GET, build_path ~queries ~api_path:matrix_media_path pth, None)
 
 let profile_get user_id = (`GET, build_path ("profile/" ^ user_id), None)
 
@@ -235,13 +284,23 @@ let profile_get_displayname user_id =
   let pth = "profile/" ^ user_id ^ "/displayname" in
   (`GET, build_path pth, None)
 
-let profile_set_displayname = ()
+let profile_set_displayname access user_id display_name =
+  let queries = query "access_token" access in
+  let content = yo_assoc [ ("displayname", yo_string display_name) ] in
+  let pth = "profile/" ^ user_id ^ "displayname" in
+  (`PUT, build_path ~queries pth, Some content)
 
 let profile_get_avatar user_id =
   let pth = "profile/" ^ user_id ^ "/avatar_url" in
   (`GET, build_path pth, None)
 
-let profile_set_avatar = ()
+let profile_set_avatar access user_id avatar_url =
+  let queries = query "access_token" access in
+  (* NOTE: Note sure if appropriate to Uri encode here... *)
+  let content =
+    yo_assoc [ ("avatar_url", Uri.pct_encode avatar_url |> yo_string) ] in
+  let pth = "profile/" ^ user_id ^ "/avatar_url" in
+  (`PUT, build_path ~queries pth, Some content)
 
 let get_presence access user_id =
   let queries = query "access_token" access in
