@@ -1,10 +1,12 @@
-type credential = Password of string | AuthToken of string
+module Credential = struct
+  type t = Password of string | AuthToken of string
+end
 
-type resize_method = Scale | Crop
+module Resize = struct
+  type t = Scale | Crop
 
-let string_of_resize = function | Scale -> "scale" | Crop -> "crop"
-
-type api_triple = Cohttp.Code.meth * string * Yojson.Basic.t option
+  let to_string = function | Scale -> "scale" | Crop -> "crop"
+end
 
 module Presence = struct
   (* Do I bother making an invalid case? *)
@@ -46,6 +48,45 @@ module MatrixEvent = struct
   module Room = struct
     module Message = struct
       type t
+
+      (* Stand-in stuff. It seems like the room message fields are fairly
+       * similar in the nio dataclass types, but some of the fields are taking
+       * jsons/dicts, so they could have anything in them really. Means that I
+       * have to learn and sort out the matrix schemas and create types. I'm
+       * hoping to not give up and pass around yojsons like I'm dynamically
+       * typing... *)
+      type tag =
+        | Text
+        | Emote
+        | Notice
+        | Image
+        | File
+        | Audio
+        | Location
+        | Video
+
+      let string_of_tag = function
+        | Text     -> "m.text"
+        | Emote    -> "m.emote"
+        | Notice   -> "m.notice"
+        | Image    -> "m.image"
+        | File     -> "m.file"
+        | Audio    -> "m.audio"
+        | Location -> "m.location"
+        | Video    -> "m.video"
+
+      (* NOTE: Do I have an unknown type? Seems like there is an unknown room
+       * message type in nio so I will have to work something out. *)
+      let tag_of_string = function
+        | "m.text"     -> Text
+        | "m.emote"    -> Emote
+        | "m.notice"   -> Notice
+        | "m.image"    -> Image
+        | "m.file"     -> File
+        | "m.audio"    -> Audio
+        | "m.location" -> Location
+        | "m.video"    -> Video
+        | _            -> Text
     end
 
     module Create = struct
@@ -173,112 +214,4 @@ module MatrixEvent = struct
     | Call of Common.t * Call.t
     | Presence of Common.t * Presence.t
     | Unknown of Common.t
-
-  (* Standin. Haven't decided where this goes yet. Collect all of the matrix
-   * evemt types that I find... Also, need to decide on breaking things up,
-   * e.g. do the room types live as a different type or in another module? *)
-  type tag =
-    | RoomMessage
-    | RoomCreate
-    | RoomGuestAccess
-    | RoomJoinRules
-    | RoomHistoryVisibility
-    | RoomMember
-    | RoomCanonicalAlias
-    | RoomName
-    | RoomTopic
-    | RoomAvatar
-    | RoomPowerLevels
-    | RoomPinnedEvents
-    | RoomEncryption
-    | RoomRedaction
-    | RoomEncrypted
-    | CallCandidates
-    | CallInvite
-    | CallAnswer
-    | CallHangup
-    | PresenceEvent
-    | UnknownEvent
-
-  let string_of_tag = function
-    | RoomMessage           -> "m.room.message"
-    | RoomCreate            -> "m.room.create"
-    | RoomGuestAccess       -> "m.room.guest_access"
-    | RoomJoinRules         -> "m.room.join_rules"
-    | RoomHistoryVisibility -> "m.room.history_visibility"
-    | RoomMember            -> "m.room.member"
-    | RoomCanonicalAlias    -> "m.room.canonical_alias"
-    | RoomName              -> "m.room.name"
-    | RoomTopic             -> "m.room.topic"
-    | RoomAvatar            -> "m.room.avatar"
-    | RoomPowerLevels       -> "m.room.power_levels"
-    | RoomPinnedEvents      -> "m.room.pinned_events"
-    | RoomEncryption        -> "m.room.encryption"
-    | RoomRedaction         -> "m.room.redaction"
-    | RoomEncrypted         -> "m.room.encrypted"
-    | CallCandidates        -> "m.call.candidates"
-    | CallInvite            -> "m.call.invite"
-    | CallAnswer            -> "m.call.answer"
-    | CallHangup            -> "m.call.hangup"
-    | PresenceEvent         -> "m.presence"
-    | UnknownEvent          -> "unknown_event"
-
-  let tag_of_string = function
-    | "m.room.message"            -> RoomMessage
-    | "m.room.create"             -> RoomCreate
-    | "m.room.guest_access"       -> RoomGuestAccess
-    | "m.room.join_rules"         -> RoomJoinRules
-    | "m.room.history_visibility" -> RoomHistoryVisibility
-    | "m.room.member"             -> RoomMember
-    | "m.room.canonical_alias"    -> RoomCanonicalAlias
-    | "m.room.name"               -> RoomName
-    | "m.room.topic"              -> RoomTopic
-    | "m.room.avatar"             -> RoomAvatar
-    | "m.room.power_levels"       -> RoomPowerLevels
-    | "m.room.pinned_events"      -> RoomPinnedEvents
-    | "m.room.encryption"         -> RoomEncryption
-    | "m.room.redaction"          -> RoomRedaction
-    | "m.room.encrypted"          -> RoomEncrypted
-    | "m.call.candidates"         -> CallCandidates
-    | "m.call.invite"             -> CallInvite
-    | "m.call.answer"             -> CallAnswer
-    | "m.call.hangup"             -> CallHangup
-    | "m.presence"                -> PresenceEvent
-    | _                           -> UnknownEvent
-end
-
-(* NOTE: Just stand-in stuff, will need to get the module struct treatment
- * for each message type. *)
-module RoomMessage = struct
-  type tag =
-    | Text
-    | Emote
-    | Notice
-    | Image
-    | File
-    | Audio
-    | Location
-    | Video
-
-  let string_of_tag = function
-    | Text     -> "m.text"
-    | Emote    -> "m.emote"
-    | Notice   -> "m.notice"
-    | Image    -> "m.image"
-    | File     -> "m.file"
-    | Audio    -> "m.audio"
-    | Location -> "m.location"
-    | Video    -> "m.video"
-
-  (* NOTE: Do I have an unknown type, or throw an exception? *)
-  let tag_of_string = function
-    | "m.text"     -> Text
-    | "m.emote"    -> Emote
-    | "m.notice"   -> Notice
-    | "m.image"    -> Image
-    | "m.file"     -> File
-    | "m.audio"    -> Audio
-    | "m.location" -> Location
-    | "m.video"    -> Video
-    | _            -> Text
 end

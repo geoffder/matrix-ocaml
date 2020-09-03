@@ -17,8 +17,6 @@ type t = { homeserver      : string
          ; encrypted_rooms : (string, String.comparator_witness) Set.t
          }
 
-type credential = Password of string | AuthToken of string
-
 let make ?device_id ?store_path ?access_token homeserver user =
   { homeserver
   ; user

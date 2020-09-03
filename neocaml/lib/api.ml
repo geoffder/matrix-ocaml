@@ -3,6 +3,9 @@ open Base
 open Types
 open Yojson_helpers
 
+(* Returned from every apicall building function. *)
+type triple = Cohttp.Code.meth * string * Yojson.Basic.t option
+
 let matrix_api_path   = "/_matrix/client/r0"
 let matrix_media_path = "/_matrix/media/r0"
 
@@ -25,6 +28,7 @@ let build_path ?queries ?(api_path=matrix_api_path) path =
 
 let login ?device_name ?device_id user cred =
   let credential =
+    let open Credential in
     match cred with
     | Password str  -> [ ("type",     yo_string "m.login.password")
                        ; ("user",     yo_string user)
@@ -273,7 +277,7 @@ let thumbnail ?(allow_remote=true) server_name media_id width height resize =
   let queries =
     query "width" (Int.to_string width)
     @ query "height" (Int.to_string height)
-    @ query "method" (string_of_resize resize)
+    @ query "method" (Resize.to_string resize)
     @ query "allow_remote" (Bool.to_string allow_remote) in
   let pth = Printf.sprintf "thumbnail/%s/%s" server_name media_id in
   (`GET, build_path ~queries ~api_path:matrix_media_path pth, None)
