@@ -91,10 +91,7 @@ let send
     |> Header.of_list in
   let uri = complete_uri client pth in
   let body = Option.map ~f:body_of_json content in
-  let get_data =
-    match data_provider with
-    | Some dp -> dp
-    | None    -> fun () -> body in
+  let get_data = Option.value ~default:(fun () -> body) data_provider in
   let call = Client.call ?ctx ?chunked:None ~headers in
   repeat ?timeout ~call ~get_data meth uri
   >=> fun (_resp, body) ->
