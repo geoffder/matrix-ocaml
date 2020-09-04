@@ -37,11 +37,6 @@ let body_of_json j = j |> Yojson.Safe.to_string |> Cohttp_lwt.Body.of_string
 
 let json_of_body b = b |> Cohttp_lwt.Body.to_string >|= Yojson.Safe.from_string
 
-(* NOTE: Both of these should be unnecessary now... *)
-(* Since Cohttp_lwt.Body lives in Lwt, double flat mapping is required. *)
-let lwt_body_result_map ~f r_lwt = Lwt_result.map (fun b_lwt -> b_lwt >|= f) r_lwt
-let ( >>|= ) a f = lwt_body_result_map ~f a
-
 (* Continue execution of given function if logged in. *)
 let logged_in client f =
   match client.access_token with
