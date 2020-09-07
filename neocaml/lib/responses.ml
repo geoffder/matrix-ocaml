@@ -1,5 +1,6 @@
 open Base
-(* open Yojson *)
+open Yojson
+open Neo_infix
 
 (* NOTE:
  * Upon looking over the setup in nio/responses.py I think that I will try to
@@ -21,7 +22,12 @@ open Base
 (* These types are tentative skeletons that may even be moved elsewhere. *)
 
 module JoinedRooms = struct
-  type t = { rooms : string list }
+  type t = string list
+
+  let of_yojson =
+    Safe.Util.member "joined_rooms"
+    >> Safe.Util.to_list
+    >> List.map ~f:Safe.Util.to_string
 end
 
 module RoomMember = struct

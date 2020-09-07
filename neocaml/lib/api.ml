@@ -159,14 +159,14 @@ let room_forget access room_id =
   let pth = "rooms/" ^ room_id ^ "/forget" in
   (`POST, build_path ~queries pth, Some (yo_assoc []))
 
-let room_messages ?stop ?dir ?lim:(lim=10) ?filter access room_id start =
+let room_messages ?stop ?dir ?(limit=10) ?filter access room_id start =
   let queries =
     query_of_option "to" stop
     @ query_of_option_map ~f:Yojson.Safe.to_string "filter" filter
     @ query_of_option_map ~f:MessageDirection.to_string "dir" dir
     @ [ ("access_token", [ access ])
       ; ("from",         [ start ])
-      ; ("limit",        [ Int.to_string lim ])
+      ; ("limit",        [ Int.to_string limit ])
       ] in
   let pth = "rooms/" ^ room_id ^ "/messages" in
   (`GET, build_path ~queries pth, None)

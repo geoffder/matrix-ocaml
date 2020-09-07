@@ -109,7 +109,7 @@ let login ?device_name client cred =
   ; access_token = j |> member "access_token" |> to_string_option
   }
 
-let logout ?all_devices:(all_devices=false) client =
+let logout ?(all_devices=false) client =
   match client.access_token with
   | None -> Lwt.return_error "Already logged out."
   | Some token ->
@@ -121,12 +121,20 @@ let joined_rooms client =
   logged_in client begin fun token ->
     Api.joined_rooms token
     |> send client
-    >>| Yojson.Safe.to_string
+    >>| Responses.JoinedRooms.of_yojson
   end
 
-let room_messages ?stop ?dir ?lim:(lim=10) ?filter client id start =
+(* NOTE:
+ *  Response is a list of room events, the of json is a bit more compicated.
+ * Requires checking "content" -> "msgtype" for each element of the returned
+ * list at key "chunk". Keys "end" and "start" contain the since tokens I think.
+ *  m.room.message and m.room.name are actually both possible for "type", which
+ * is at the same level as "content", meaning that not just messages (which have
+ * a "msgtype" in their "content" dict) are included. The module for this one
+ * must cover a lot of bases. *)
+let room_messages ?stop ?dir ?(limit=10) ?filter client id start =
   logged_in client begin fun token ->
-    Api.room_messages ?stop ?dir ~lim ?filter token id start
+    Api.room_messages ?stop ?dir ~limit ?filter token id start
     |> send client
     >>| Yojson.Safe.to_string
   end

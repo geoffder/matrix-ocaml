@@ -36,5 +36,4 @@ module Config = struct
     ; preset       : preset option
     ; is_direct    : bool
     } [@@deriving to_yojson]
-
 end
