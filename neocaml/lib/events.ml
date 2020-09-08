@@ -1,5 +1,12 @@
+open Neo_infix
+
+module U = Yojson.Safe.Util
+
+(* NOTE: This wasn't based on looking at jsons, but rather from a dataclass
+ * in nio. I'll focus on the actual jsons from matrix since I need to make
+ * the records line up. *)
 module Common = struct
-  type t = { source           : Yojson.Basic.t
+  type t = { source           : Yojson.Safe.t
            ; event_id         : string
            ; sender           : string
            ; server_timestamp : int
@@ -13,46 +20,132 @@ end
 
 module Room = struct
   module Message = struct
-    type t
-
     (* Stand-in stuff. It seems like the room message fields are fairly
      * similar in the nio dataclass types, but some of the fields are taking
      * jsons/dicts, so they could have anything in them really. Means that I
      * have to learn and sort out the matrix schemas and create types. I'm
      * hoping to not give up and pass around yojsons like I'm dynamically
      * typing... *)
-    type tag =
-      | Text
-      | Emote
-      | Notice
-      | Image
-      | File
-      | Audio
-      | Location
-      | Video
 
-    let string_of_tag = function
-      | Text     -> "m.text"
-      | Emote    -> "m.emote"
-      | Notice   -> "m.notice"
-      | Image    -> "m.image"
-      | File     -> "m.file"
-      | Audio    -> "m.audio"
-      | Location -> "m.location"
-      | Video    -> "m.video"
+    (* Missing optional "state_key" field? *)
+    module Common = struct
+      type unsigned = { age : int; redacted_because : string option }
+      [@@deriving of_yojson { exn = true }]
 
-    (* NOTE: Do I have an unknown type? Seems like there is an unknown room
-     * message type in nio so I will have to work something out. *)
-    let tag_of_string = function
-      | "m.text"     -> Text
-      | "m.emote"    -> Emote
-      | "m.notice"   -> Notice
-      | "m.image"    -> Image
-      | "m.file"     -> File
-      | "m.audio"    -> Audio
-      | "m.location" -> Location
-      | "m.video"    -> Video
-      | _            -> Text
+      type t = { event_id : string
+               ; origin_server_ts : int
+               ; room_id : string
+               ; sender : string
+               ; m_type : string
+               ; unsigned : unsigned option
+               } [@@deriving of_yojson { exn = true }]
+    end
+
+    module Text = struct
+      type t = { body           : string
+               ; format         : string option
+               ; formatted_body : string option
+               } [@@deriving of_yojson { exn = true }]
+    end
+
+    module Emote = struct
+      type t = { body           : string
+               ; format         : string option
+               ; formatted_body : string option
+               } [@@deriving of_yojson { exn = true }]
+    end
+
+    module Notice = struct
+      type t = { body           : string
+               ; format         : string option
+               ; formatted_body : string option
+               } [@@deriving of_yojson { exn = true }]
+    end
+
+    module Image = struct
+      type t
+    end
+
+    module File = struct
+      type t
+    end
+
+    module Audio = struct
+      type t
+    end
+
+    module Location = struct
+      type t
+    end
+
+    (* TODO: What is optional? Schema in nio only requires body, url, and
+     * msgtype. The info stuff is left out, I got that from the client-server
+     * API Swagger UI page. *)
+    module Video = struct
+      type thumbnail_info = { h        : int
+                            ; w        : int
+                            ; mimetype : string
+                            ; size     : int
+                            }
+
+      type info = { duration       : int
+                  ; h              : int
+                  ; mimetype       : string
+                  ; size           : int
+                  ; thumbnail_info : thumbnail_info
+                  ; thumnail_url   : string
+                  ; w              : int
+                  }
+
+      type t = { body : string
+               ; info : info
+               ; url  : string
+               }
+    end
+
+    type details =
+      | Text of Text.t
+      | Emote of Emote.t
+      | Notice of Notice.t
+      | Image of Image.t
+      | File of File.t
+      | Audio of Audio.t
+      | Location of Location.t
+      | Video of Video.t
+      | Unknown
+
+    type t = Common.t * details
+
+    let to_mtype = function
+      | Text     _ -> "m.text"
+      | Emote    _ -> "m.emote"
+      | Notice   _ -> "m.notice"
+      | Image    _ -> "m.image"
+      | File     _ -> "m.file"
+      | Audio    _ -> "m.audio"
+      | Location _ -> "m.location"
+      | Video    _ -> "m.video"
+      | Unknown    -> "unknown message type"
+
+    (* NOTE: Using _exn here out of laziness right now, have to decide how I want
+     * to structure wrt to error handling of yojson conversion. *)
+
+    (* let of_yojson m_type j =
+     *   let common = Common.of_yojson_exn j in
+     *   let content = U.member "content" j in
+     *   let details =
+     *     match m_type with
+     *     | "m.text"     -> Text (Text.of_yojson_exn content)
+     *     | "m.emote"    -> Emote (Emote.of_yojson_exn content)
+     *     | "m.notice"   -> Notice (Notice.of_yojson_exn content)
+     *     | "m.image"    -> Image (Image.of_yojson_exn content)
+     *     | "m.file"     -> File (File.of_yojson_exn content)
+     *     | "m.audio"    -> Audio (Audio.of_yojson_exn content)
+     *     | "m.location" -> Location (Location.of_yojson_exn content)
+     *     | "m.video"    -> Video (Video.of_yojson_exn content)
+     *     | _            -> Unknown in
+     *   (common, details) *)
+
   end
 
   module Create = struct
@@ -80,7 +173,9 @@ module Room = struct
   end
 
   module Name = struct
-    type t
+    type t = string
+
+    let of_yojson = U.member "name" >> U.to_string
   end
 
   module Topic = struct
