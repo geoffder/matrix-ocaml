@@ -1,3 +1,4 @@
+open Base
 open Neo_infix
 
 module U = Yojson.Safe.Util
@@ -19,88 +20,143 @@ module Common = struct
 end
 
 module Room = struct
+  module Common = struct
+    type unsigned = { age : int; redacted_because : string option }
+    [@@deriving of_yojson]
+
+    type t = { event_id         : string
+             ; origin_server_ts : int
+             ; room_id          : string
+             ; sender           : string
+             ; state_key        : string option
+             ; m_type           : string
+             ; unsigned         : unsigned option
+             } [@@deriving of_yojson]
+  end
+
   module Message = struct
-    (* Stand-in stuff. It seems like the room message fields are fairly
-     * similar in the nio dataclass types, but some of the fields are taking
-     * jsons/dicts, so they could have anything in them really. Means that I
-     * have to learn and sort out the matrix schemas and create types. I'm
-     * hoping to not give up and pass around yojsons like I'm dynamically
-     * typing... *)
+    (* TODO: Many of these fields will likely have to be marked as optional. I
+     * have inconsistently marked some already, based on what the matrix spec
+     * says is required. Need to decided between proactive agressive "optioning"
+     * or rolling with it and making things options as I run in to problems. *)
+    type thumbnail_info = { h        : int
+                          ; w        : int
+                          ; mimetype : string
+                          ; size     : int
+                          } [@@deriving of_yojson]
 
-    (* Missing optional "state_key" field? *)
-    module Common = struct
-      type unsigned = { age : int; redacted_because : string option }
-      [@@deriving of_yojson { exn = true }]
+    type json_web_key = { kty     : string
+                        ; key_ops : string list
+                        ; alg     : string
+                        ; k       : string
+                        ; ext     : bool
+                        }[@@deriving of_yojson]
 
-      type t = { event_id : string
-               ; origin_server_ts : int
-               ; room_id : string
-               ; sender : string
-               ; m_type : string
-               ; unsigned : unsigned option
-               } [@@deriving of_yojson { exn = true }]
-    end
+    type encrypted_file = { url    : string
+                          ; key    : json_web_key
+                          ; iv     : string
+                          (* ; hashes : (string, string, String.comparator_witness) Map.t *)
+                          ; hashes : string (* actually string -> string map *)
+                          ; v      : string  (* must be = "v2" *)
+                          } [@@deriving of_yojson]
+
+    type image_info = { h              : int
+                      ; w              : int
+                      ; mimetype       : string
+                      ; size           : int
+                      ; thumbnail_info : thumbnail_info
+                      ; thumbnail_url  : string option
+                      ; thumbnail_file : encrypted_file option
+                      } [@@deriving of_yojson]
+
 
     module Text = struct
       type t = { body           : string
                ; format         : string option
                ; formatted_body : string option
-               } [@@deriving of_yojson { exn = true }]
+               } [@@deriving of_yojson]
     end
 
     module Emote = struct
       type t = { body           : string
                ; format         : string option
                ; formatted_body : string option
-               } [@@deriving of_yojson { exn = true }]
+               } [@@deriving of_yojson]
     end
 
     module Notice = struct
       type t = { body           : string
                ; format         : string option
                ; formatted_body : string option
-               } [@@deriving of_yojson { exn = true }]
+               } [@@deriving of_yojson]
     end
 
     module Image = struct
-      type t
+      (* NOTE: url is required if unencrypted, file is required if encrypted. *)
+      type t = { body : string
+               ; info : image_info option
+               ; url  : string option
+               ; file : encrypted_file option
+               } [@@deriving of_yojson]
     end
 
     module File = struct
-      type t
+      type info = { mimetype : string
+                  ; size     : int
+                  ; thumbnail_url : string option
+                  ; thumbnail_file : encrypted_file option
+                  ; thumbnail_info : thumbnail_info option
+                  } [@@deriving of_yojson]
+
+      type t = { body     : string
+               ; filename : string option
+               ; info     : info option
+               ; url      : string option
+               ; file     : encrypted_file option
+               } [@@deriving of_yojson]
     end
 
     module Audio = struct
-      type t
+      type info = { duration : int
+                  ; mimetype : string
+                  ; size     : int
+                  } [@@deriving of_yojson]
+
+      type t = { body     : string
+               ; info     : info option
+               ; url      : string option
+               ; file     : encrypted_file option
+               } [@@deriving of_yojson]
     end
 
     module Location = struct
-      type t
+      type info = { thumbnail_url  : string option
+                  ; thumbnail_file : encrypted_file option
+                  ; thumbnail_info : thumbnail_info option
+                  } [@@deriving of_yojson]
+
+      type t = { body     : string
+               ; geo_uri  : string
+               ; info     : info option
+               } [@@deriving of_yojson]
     end
 
-    (* TODO: What is optional? Schema in nio only requires body, url, and
-     * msgtype. The info stuff is left out, I got that from the client-server
-     * API Swagger UI page. *)
     module Video = struct
-      type thumbnail_info = { h        : int
-                            ; w        : int
-                            ; mimetype : string
-                            ; size     : int
-                            }
-
       type info = { duration       : int
                   ; h              : int
+                  ; w              : int
                   ; mimetype       : string
                   ; size           : int
-                  ; thumbnail_info : thumbnail_info
-                  ; thumnail_url   : string
-                  ; w              : int
-                  }
+                  ; thumbnail_url  : string option
+                  ; thumbnail_file : encrypted_file option
+                  ; thumbnail_info : thumbnail_info option
+                  } [@@deriving of_yojson]
 
       type t = { body : string
                ; info : info
                ; url  : string
-               }
+               ; file : encrypted_file option
+               } [@@deriving of_yojson]
     end
 
     type details =
@@ -127,25 +183,31 @@ module Room = struct
       | Video    _ -> "m.video"
       | Unknown    -> "unknown message type"
 
-    (* NOTE: Using _exn here out of laziness right now, have to decide how I want
-     * to structure wrt to error handling of yojson conversion. *)
+    let text m     = Text m
+    let emote m    = Emote m
+    let notice m   = Notice m
+    let image m    = Image m
+    let file m     = File m
+    let audio m    = Audio m
+    let location m = Location m
+    let video m    = Video m
 
-    (* let of_yojson m_type j =
-     *   let common = Common.of_yojson_exn j in
-     *   let content = U.member "content" j in
-     *   let details =
-     *     match m_type with
-     *     | "m.text"     -> Text (Text.of_yojson_exn content)
-     *     | "m.emote"    -> Emote (Emote.of_yojson_exn content)
-     *     | "m.notice"   -> Notice (Notice.of_yojson_exn content)
-     *     | "m.image"    -> Image (Image.of_yojson_exn content)
-     *     | "m.file"     -> File (File.of_yojson_exn content)
-     *     | "m.audio"    -> Audio (Audio.of_yojson_exn content)
-     *     | "m.location" -> Location (Location.of_yojson_exn content)
-     *     | "m.video"    -> Video (Video.of_yojson_exn content)
-     *     | _            -> Unknown in
-     *   (common, details) *)
-
+    let of_yojson content =
+      U.member "msgtype" content
+      |> U.to_string_option
+      |> Option.map ~f:begin
+        function
+        | "m.text"     -> Text.of_yojson content     |> Result.map ~f:text
+        | "m.emote"    -> Emote.of_yojson content    |> Result.map ~f:emote
+        | "m.notice"   -> Notice.of_yojson content   |> Result.map ~f:notice
+        | "m.image"    -> Image.of_yojson content    |> Result.map ~f:image
+        | "m.file"     -> File.of_yojson content     |> Result.map ~f:file
+        | "m.audio"    -> Audio.of_yojson content    |> Result.map ~f:audio
+        | "m.location" -> Location.of_yojson content |> Result.map ~f:location
+        | "m.video"    -> Video.of_yojson content    |> Result.map ~f:video
+        | _            -> Result.return Unknown
+      end
+      |> Option.value ~default:(Result.fail "Missing msgtype.")
   end
 
   module Create = struct
