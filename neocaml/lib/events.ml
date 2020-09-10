@@ -1,5 +1,5 @@
 open Base
-open Neo_infix
+(* open Neo_infix *)
 
 module U = Yojson.Safe.Util
 
@@ -21,8 +21,9 @@ end
 
 module Room = struct
   module Common = struct
-    type unsigned = { age : int; redacted_because : string option }
-    [@@deriving of_yojson]
+    type unsigned = { age : int
+                    ; redacted_because : string option
+                    } [@@deriving of_yojson]
 
     type t = { event_id         : string
              ; origin_server_ts : int
@@ -211,19 +212,45 @@ module Room = struct
   end
 
   module Create = struct
-    type t
+    type previous_room = { room_id  : string
+                         ; event_id : string
+                         } [@@deriving of_yojson]
+
+    type t = { creator      : string
+             ; federate     : bool option
+             ; room_version : string option
+             ; predecessor  : previous_room option
+             } [@@deriving of_yojson]
   end
 
   module GuestAccess = struct
-    type t
+    type access = CanJoin | Forbidden
+
+    let access_of_yojson = function
+      | `String "can_join"  -> Result.return CanJoin
+      | `String "forbidden" -> Result.return Forbidden
+      | `String s           -> Result.fail ("Invalid enum value: " ^ s)
+      | _                   -> Result.fail "Missing/wrong-typed field."
+
+    type t = { guest_access : access } [@@deriving of_yojson]
   end
 
   module JoinRules = struct
-    type t
+    type t = { join_rule : string } [@@deriving of_yojson]
   end
 
   module HistoryVisibility = struct
-    type t
+    type visibility = Invited | Joined | Shared | WorldReadable
+
+    let visibility_of_yojson = function
+      | `String "invited"        -> Result.return Invited
+      | `String "joined"         -> Result.return Joined
+      | `String "shared"         -> Result.return Shared
+      | `String "world_readable" -> Result.return WorldReadable
+      | `String s                -> Result.fail ("Invalid enum value: " ^ s)
+      | _                        -> Result.fail "Missing/wrong-typed field."
+
+    type t = { history_visibility : visibility } [@@deriving of_yojson]
   end
 
   module Member = struct
@@ -231,13 +258,13 @@ module Room = struct
   end
 
   module CanonicalAlias = struct
-    type t
+    type t = { alias       : string option
+             ; alt_aliases : string list
+             } [@@deriving of_yojson]
   end
 
   module Name = struct
-    type t = string
-
-    let of_yojson = U.member "name" >> U.to_string
+    type t = { name : string } [@@deriving of_yojson]
   end
 
   module Topic = struct
