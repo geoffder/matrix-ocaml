@@ -8,7 +8,7 @@ type json_web_key = { kty     : string
                     ; alg     : string
                     ; k       : string
                     ; ext     : bool
-                    }[@@deriving of_yojson]
+                    } [@@deriving of_yojson]
 
 type encrypted_file = { url    : string
                       ; key    : json_web_key
