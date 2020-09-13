@@ -377,65 +377,67 @@ module Room = struct
              } [@@deriving of_yojson]
   end
 
-  type content =
-    | Message of Message.t
-    | Create of Create.t
-    | GuestAccess of GuestAccess.t
-    | JoinRules of JoinRules.t
-    | HistoryVisibility of HistoryVisibility.t
-    | Member of Member.t
-    | CanonicalAlias of CanonicalAlias.t
-    | Name of Name.t
-    | Topic of Topic.t
-    | Avatar of Avatar.t
-    | PowerLevels of PowerLevels.t
-    | PinnedEvents of PinnedEvents.t
-    | Encryption of Encryption.t
-    | Redaction of Redaction.t
-    | Encrypted of Encrypted.t
-    | Tombstone of Tombstone.t
+  module Content = struct
+    type t =
+      | Message of Message.t
+      | Create of Create.t
+      | GuestAccess of GuestAccess.t
+      | JoinRules of JoinRules.t
+      | HistoryVisibility of HistoryVisibility.t
+      | Member of Member.t
+      | CanonicalAlias of CanonicalAlias.t
+      | Name of Name.t
+      | Topic of Topic.t
+      | Avatar of Avatar.t
+      | PowerLevels of PowerLevels.t
+      | PinnedEvents of PinnedEvents.t
+      | Encryption of Encryption.t
+      | Redaction of Redaction.t
+      | Encrypted of Encrypted.t
+      | Tombstone of Tombstone.t
 
-  let message r            = Message r
-  let create r             = Create r
-  let guest_access r       = GuestAccess r
-  let join_rules r         = JoinRules r
-  let history_visibility r = HistoryVisibility r
-  let member r             = Member r
-  let canonical_alias r    = CanonicalAlias r
-  let name r               = Name r
-  let topic r              = Topic r
-  let avatar r             = Avatar r
-  let power_levels r       = PowerLevels r
-  let pinned_events r      = PinnedEvents r
-  let encryption r         = Encryption r
-  let redaction r          = Redaction r
-  let encrypted r          = Encrypted r
-  let tombstone r          = Tombstone r
+    let message r            = Message r
+    let create r             = Create r
+    let guest_access r       = GuestAccess r
+    let join_rules r         = JoinRules r
+    let history_visibility r = HistoryVisibility r
+    let member r             = Member r
+    let canonical_alias r    = CanonicalAlias r
+    let name r               = Name r
+    let topic r              = Topic r
+    let avatar r             = Avatar r
+    let power_levels r       = PowerLevels r
+    let pinned_events r      = PinnedEvents r
+    let encryption r         = Encryption r
+    let redaction r          = Redaction r
+    let encrypted r          = Encrypted r
+    let tombstone r          = Tombstone r
 
-  let content_of_yojson m_type c =
-    let open Result in
-    match m_type with
-    | "m.message"            -> Message.of_yojson c           >>| message
-    | "m.create"             -> Create.of_yojson c            >>| create
-    | "m.guest_access"       -> GuestAccess.of_yojson c       >>| guest_access
-    | "m.join_rules"         -> JoinRules.of_yojson c         >>| join_rules
-    | "m.history_visibility" -> HistoryVisibility.of_yojson c >>| history_visibility
-    | "m.member"             -> Member.of_yojson c            >>| member
-    | "m.canonical_alias"    -> CanonicalAlias.of_yojson c    >>| canonical_alias
-    | "m.name"               -> Name.of_yojson c              >>| name
-    | "m.topic"              -> Topic.of_yojson c             >>| topic
-    | "m.avatar"             -> Avatar.of_yojson c            >>| avatar
-    | "m.power_levels"       -> PowerLevels.of_yojson c       >>| power_levels
-    | "m.pinned_events"      -> PinnedEvents.of_yojson c      >>| pinned_events
-    | "m.encryption"         -> Encryption.of_yojson c        >>| encryption
-    | "m.redaction"          -> Redaction.of_yojson c         >>| redaction
-    | "m.encrypted"          -> Encrypted.of_yojson c         >>| encrypted
-    | "m.tombstone"          -> Tombstone.of_yojson c         >>| tombstone
-    | m                      -> Result.fail ("Unknown matrix type: " ^ m)
+    let of_yojson m_type c =
+      let open Result in
+      match m_type with
+      | "m.message"            -> Message.of_yojson c           >>| message
+      | "m.create"             -> Create.of_yojson c            >>| create
+      | "m.guest_access"       -> GuestAccess.of_yojson c       >>| guest_access
+      | "m.join_rules"         -> JoinRules.of_yojson c         >>| join_rules
+      | "m.history_visibility" -> HistoryVisibility.of_yojson c >>| history_visibility
+      | "m.member"             -> Member.of_yojson c            >>| member
+      | "m.canonical_alias"    -> CanonicalAlias.of_yojson c    >>| canonical_alias
+      | "m.name"               -> Name.of_yojson c              >>| name
+      | "m.topic"              -> Topic.of_yojson c             >>| topic
+      | "m.avatar"             -> Avatar.of_yojson c            >>| avatar
+      | "m.power_levels"       -> PowerLevels.of_yojson c       >>| power_levels
+      | "m.pinned_events"      -> PinnedEvents.of_yojson c      >>| pinned_events
+      | "m.encryption"         -> Encryption.of_yojson c        >>| encryption
+      | "m.redaction"          -> Redaction.of_yojson c         >>| redaction
+      | "m.encrypted"          -> Encrypted.of_yojson c         >>| encrypted
+      | "m.tombstone"          -> Tombstone.of_yojson c         >>| tombstone
+      | m                      -> Result.fail ("Unknown matrix type: " ^ m)
+  end
 
   type event_content =
-    | Room of { content : content }
-    | State of { content : content; prev_content : content option }
+    | Room of { content : Content.t }
+    | State of { content : Content.t; prev_content : Content.t option }
 
   module Common = struct
     type unsigned = { age : int
@@ -457,11 +459,78 @@ module Room = struct
   let of_yojson j =
     let open Result in
     Common.of_yojson j >>= fun com ->
-    let content = U.member "content" j |> content_of_yojson com.m_type in
+    let content = U.member "content" j |> Content.of_yojson com.m_type in
     if Option.is_none com.state_key then
       let prev_content = U.member "prev_content" j
-                         |> content_of_yojson com.m_type
+                         |> Content.of_yojson com.m_type
                          |> Result.ok in
       content >>| fun c -> com, State { content = c; prev_content }
-    else content >>| fun c -> com, Room { content = c }
+    else
+      content >>| fun c -> com, Room { content = c }
+end
+
+module Call = struct
+  module Invite = struct
+    type session_type = Offer
+
+    let session_type_of_yojson = function
+      | `String "offer" -> Result.return Offer
+      | `String s       -> Result.fail ("Type of session was not offer: " ^ s)
+      | _               -> Result.fail "Type of session missing / not a string."
+
+    type offer = { session_type : session_type [@key "type"]
+                 ; sdp          : string
+                 } [@@deriving of_yojson]
+
+    type t = { call_id : string
+             ; offer : offer
+             ; version : int
+             ; lifetime : int
+             } [@@deriving of_yojson]
+  end
+
+  module Candidates = struct
+    type candidate = { sdpMid        : string
+                     ; sdpMLineIndex : int
+                     ; candidate     : string
+                     } [@@deriving of_yojson]
+
+    type t = { call_id    : string
+             ; candidates : candidate list
+             ; version    : int
+             } [@@deriving of_yojson]
+  end
+
+  module Answer = struct
+    type session_type = Answer
+
+    let session_type_of_yojson = function
+      | `String "answer" -> Result.return Answer
+      | `String s       -> Result.fail ("Type of session was not answer: " ^ s)
+      | _               -> Result.fail "Type of session missing / not a string."
+
+    type answer = { session_type : session_type [@key "type"]
+                  ; sdp          : string
+                  } [@@deriving of_yojson]
+
+    type t = { call_id : string
+             ; answer  : answer
+             ; version : int
+             } [@@deriving of_yojson]
+  end
+
+  module Hangup = struct
+    type reason = IceFailed | InviteTimeout
+
+    let reason_of_yojson = function
+      | `String "ice_failed"     -> Result.return IceFailed
+      | `String "invite_timeout" -> Result.return InviteTimeout
+      | `String s -> Result.fail ("Reason not a valid enum value: " ^ s)
+      | _         -> Result.fail "Reason was field not a string."
+
+    type t = { call_id : string
+             ; version : int
+             ; reason : reason option
+             } [@@deriving of_yojson]
+  end
 end
