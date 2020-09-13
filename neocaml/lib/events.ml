@@ -18,58 +18,39 @@ type encrypted_file = { url    : string
                       ; v      : string  (* must be = "v2" *)
                       } [@@deriving of_yojson]
 
-type thumbnail_info = { h        : int
-                      ; w        : int
-                      ; mimetype : string
-                      ; size     : int
+type thumbnail_info = { h        : int option
+                      ; w        : int option
+                      ; mimetype : string option
+                      ; size     : int option
                       } [@@deriving of_yojson]
 
-type image_info = { h              : int
-                  ; w              : int
-                  ; mimetype       : string
-                  ; size           : int
-                  ; thumbnail_info : thumbnail_info
-                  ; thumbnail_url  : string option
+type image_info = { h              : int option
+                  ; w              : int option
+                  ; mimetype       : string option
+                  ; size           : int option
+                  ; thumbnail_info : thumbnail_info option
+                  ; thumbnail_url  : string option option
                   ; thumbnail_file : encrypted_file option
                   } [@@deriving of_yojson]
 
 (* NOTE: This wasn't based on looking at jsons, but rather from a dataclass
  * in nio. I'll focus on the actual jsons from matrix since I need to make
  * the records line up. *)
-module Common = struct
-  type t = { source           : Yojson.Safe.t
-           ; event_id         : string
-           ; sender           : string
-           ; server_timestamp : int
-           ; decrypted        : bool
-           ; verified         : bool
-           ; sender_key       : string option
-           ; session_id       : string option
-           ; transaction_id   : string option
-           }
-end
+(* module Common = struct
+ *   type t = { source           : Yojson.Safe.t
+ *            ; event_id         : string
+ *            ; sender           : string
+ *            ; server_timestamp : int
+ *            ; decrypted        : bool
+ *            ; verified         : bool
+ *            ; sender_key       : string option
+ *            ; session_id       : string option
+ *            ; transaction_id   : string option
+ *            }
+ * end *)
 
 module Room = struct
-  module Common = struct
-    type unsigned = { age : int
-                    ; redacted_because : string option
-                    } [@@deriving of_yojson]
-
-    type t = { event_id         : string
-             ; origin_server_ts : int
-             ; room_id          : string
-             ; sender           : string
-             ; state_key        : string option
-             ; m_type           : string
-             ; unsigned         : unsigned option
-             } [@@deriving of_yojson]
-  end
-
   module Message = struct
-    (* TODO: Many of these fields will likely have to be marked as optional. I
-     * have inconsistently marked some already, based on what the matrix spec
-     * says is required. Need to decided between proactive agressive "optioning"
-     * or rolling with it and making things options as I run in to problems. *)
     module Text = struct
       type t = { body           : string
                ; format         : string option
@@ -101,8 +82,8 @@ module Room = struct
     end
 
     module File = struct
-      type info = { mimetype : string
-                  ; size     : int
+      type info = { mimetype : string option
+                  ; size     : int option
                   ; thumbnail_url : string option
                   ; thumbnail_file : encrypted_file option
                   ; thumbnail_info : thumbnail_info option
@@ -117,9 +98,9 @@ module Room = struct
     end
 
     module Audio = struct
-      type info = { duration : int
-                  ; mimetype : string
-                  ; size     : int
+      type info = { duration : int option
+                  ; mimetype : string option
+                  ; size     : int option
                   } [@@deriving of_yojson]
 
       type t = { body     : string
@@ -142,24 +123,25 @@ module Room = struct
     end
 
     module Video = struct
-      type info = { duration       : int
-                  ; h              : int
-                  ; w              : int
-                  ; mimetype       : string
-                  ; size           : int
+      type info = { duration       : int option
+                  ; h              : int option
+                  ; w              : int option
+                  ; mimetype       : string option
+                  ; size           : int option
                   ; thumbnail_url  : string option
                   ; thumbnail_file : encrypted_file option
                   ; thumbnail_info : thumbnail_info option
                   } [@@deriving of_yojson]
 
+      (* NOTE: url or file is required depending on encryption. *)
       type t = { body : string
-               ; info : info
-               ; url  : string
+               ; info : info option
+               ; url  : string option
                ; file : encrypted_file option
                } [@@deriving of_yojson]
     end
 
-    type details =
+    type t =
       | Text of Text.t
       | Emote of Emote.t
       | Notice of Notice.t
@@ -169,8 +151,6 @@ module Room = struct
       | Location of Location.t
       | Video of Video.t
       | Unknown
-
-    type t = Common.t * details
 
     let to_mtype = function
       | Text     _ -> "m.text"
@@ -192,7 +172,7 @@ module Room = struct
     let location m = Location m
     let video m    = Video m
 
-    let details_of_yojson content =
+    let of_yojson content =
       U.member "msgtype" content
       |> U.to_string_option
       |> Option.map ~f:begin
@@ -208,9 +188,6 @@ module Room = struct
         | _            -> Result.return Unknown
       end
       |> Option.value ~default:(Result.fail "Missing msgtype.")
-
-    (* TODO: Implement of_yojson which will return (t, string) result. So,
-     * (Common.t * details). *)
   end
 
   module Create = struct
@@ -293,7 +270,7 @@ module Room = struct
                           ; sender    : string
                           } [@@deriving of_yojson]
 
-    type unsigned_data = { invite_room_state : stripped_state list
+    type unsigned_data = { invite_room_state : stripped_state list option
                          } [@@deriving of_yojson]
 
     type t = { avatar_url         : string option
@@ -307,7 +284,7 @@ module Room = struct
 
   module CanonicalAlias = struct
     type t = { alias       : string option
-             ; alt_aliases : string list
+             ; alt_aliases : string list option
              } [@@deriving of_yojson]
   end
 
@@ -360,15 +337,14 @@ module Room = struct
   module Encrypted = struct
     (* algorithm is an enum that must be 'm.olm.v1.curve25519-aes-sha2' or
      * 'm.megolm.v1.aes-sha2' *)
-    type ciphertext_info = { body     : string
-                           ; olm_type : int
+    type ciphertext_info = { body     : string option
+                           ; olm_type : int option
                            }
 
-    (* NOTE: Assuming these are both required... *)
-    let ciphertext_info_of_yojson = function
-      | `Assoc [ ("body",  `String body); ("type", `Int olm_type) ] ->
-        Result.return { body; olm_type }
-      | _ -> Result.fail "Invalid ciphertext info map."
+    let ciphertext_info_of_yojson j =
+      let body = U.member "body" j |> U.to_string_option in
+      let olm_type = U.member "type" j |> U.to_int_option in
+      Result.return { body; olm_type }
 
     type ciphertext =
       | Cipher of string
@@ -395,7 +371,13 @@ module Room = struct
              } [@@deriving of_yojson]
   end
 
-  type t =
+  module Tombstone = struct
+    type t = { body             : string
+             ; replacement_room : string
+             } [@@deriving of_yojson]
+  end
+
+  type content =
     | Message of Message.t
     | Create of Create.t
     | GuestAccess of GuestAccess.t
@@ -411,6 +393,7 @@ module Room = struct
     | Encryption of Encryption.t
     | Redaction of Redaction.t
     | Encrypted of Encrypted.t
+    | Tombstone of Tombstone.t
 
   let message r            = Message r
   let create r             = Create r
@@ -427,12 +410,58 @@ module Room = struct
   let encryption r         = Encryption r
   let redaction r          = Redaction r
   let encrypted r          = Encrypted r
+  let tombstone r          = Tombstone r
 
-  (* TODO: See todo in Message. Need to implement of_yojson for this first
-   * end to end yojson digestion to check out. *)
-  (* let of_yojson j =
-   *   match U.member "type" j |> U.to_string_option with
-   *   | None -> Result.fail "Missing type field."
-   *   | Some "m.room.message" -> Message.of_yojson j |> Result.map ~f:message
-   *   | _ -> Result.fail "" *)
+  let content_of_yojson m_type c =
+    let open Result in
+    match m_type with
+    | "m.message"            -> Message.of_yojson c           >>| message
+    | "m.create"             -> Create.of_yojson c            >>| create
+    | "m.guest_access"       -> GuestAccess.of_yojson c       >>| guest_access
+    | "m.join_rules"         -> JoinRules.of_yojson c         >>| join_rules
+    | "m.history_visibility" -> HistoryVisibility.of_yojson c >>| history_visibility
+    | "m.member"             -> Member.of_yojson c            >>| member
+    | "m.canonical_alias"    -> CanonicalAlias.of_yojson c    >>| canonical_alias
+    | "m.name"               -> Name.of_yojson c              >>| name
+    | "m.topic"              -> Topic.of_yojson c             >>| topic
+    | "m.avatar"             -> Avatar.of_yojson c            >>| avatar
+    | "m.power_levels"       -> PowerLevels.of_yojson c       >>| power_levels
+    | "m.pinned_events"      -> PinnedEvents.of_yojson c      >>| pinned_events
+    | "m.encryption"         -> Encryption.of_yojson c        >>| encryption
+    | "m.redaction"          -> Redaction.of_yojson c         >>| redaction
+    | "m.encrypted"          -> Encrypted.of_yojson c         >>| encrypted
+    | "m.tombstone"          -> Tombstone.of_yojson c         >>| tombstone
+    | m                      -> Result.fail ("Unknown matrix type: " ^ m)
+
+  type event_content =
+    | Room of { content : content }
+    | State of { content : content; prev_content : content option }
+
+  module Common = struct
+    type unsigned = { age : int
+                    ; redacted_because : string option
+                    } [@@deriving of_yojson]
+
+    type t = { m_type           : string [@key "type"]
+             ; event_id         : string
+             ; sender           : string
+             ; origin_server_ts : int
+             ; unsigned         : unsigned option
+             ; room_id          : string
+             ; state_key        : string option
+             } [@@deriving of_yojson]
+  end
+
+  type t = Common.t * event_content
+
+  let of_yojson j =
+    let open Result in
+    Common.of_yojson j >>= fun com ->
+    let content = U.member "content" j |> content_of_yojson com.m_type in
+    if Option.is_none com.state_key then
+      let prev_content = U.member "prev_content" j
+                         |> content_of_yojson com.m_type
+                         |> Result.ok in
+      content >>| fun c -> com, State { content = c; prev_content }
+    else content >>| fun c -> com, Room { content = c }
 end
