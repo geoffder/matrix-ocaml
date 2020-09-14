@@ -526,11 +526,26 @@ module Call = struct
       | `String "ice_failed"     -> Result.return IceFailed
       | `String "invite_timeout" -> Result.return InviteTimeout
       | `String s -> Result.fail ("Reason not a valid enum value: " ^ s)
-      | _         -> Result.fail "Reason was field not a string."
+      | _         -> Result.fail "Reason field was not a string."
 
     type t = { call_id : string
              ; version : int
              ; reason : reason option
              } [@@deriving of_yojson]
   end
+
+  type t =
+    | Invite of Invite.t
+    | Candidates of Candidates.t
+    | Answer of Answer.t
+    | Hangup of Hangup.t
+
+  let invite m = Invite m
+  let candidates m = Candidates m
+  let answer m = Answer m
+  let hangup m = Hangup m
+
+  (* TODO: Note call events will have to have a common component as well, so
+   * this is actually kindof orphaned here. Will need to tie it in with the
+   * other events I think. Need to go over the specs more. *)
 end
