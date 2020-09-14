@@ -21,6 +21,14 @@ open Neo_infix
 
 (* These types are tentative skeletons that may even be moved elsewhere. *)
 
+(* TODO: It is probably worth building the sync response digestion here as one
+ * of the first steps. I have come around a bit on the importance of a response
+ * module for converting json responses from the server in to ocaml types. I
+ * still think that some things are so simple that they should skip the
+ * of_yojson step, such as login for example. *)
+
+(* NOTE: This is just for the response to the joined_rooms API request, not to
+ * be confused with JoinedRoom which is part of the sync response. *)
 module JoinedRooms = struct
   type t = string list
 
@@ -41,7 +49,7 @@ module Device = struct
   type t = { id: string
            ; display_name : string
            ; last_seen_ip : string
-           ; last_seen_date : string (* FIXME: Should be a datetime type *)
+           ; last_seen_date : string (* FIXME: Should be a datetime type? *)
            }
 end
 
