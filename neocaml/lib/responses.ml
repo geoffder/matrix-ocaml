@@ -71,3 +71,52 @@ end
 module DeviceList = struct
   type t
 end
+
+module Event = struct
+  (* NOTE: Seems like this Event json type is lacking all of the non-content
+   * info other than the "type" field which will help in the digestion of the
+   * content json into an Events module type. No need for the Common.t data
+   * described there. If that is missing in this basic response Event object,
+   * should I be organizing things a bit differently if sync is the main way
+   *  most events are brought in? *)
+
+  (* NOTE: Looking at the example sync response in the spec, the "presence"
+   * events list element has "type": "m.presence", and a "sender" field. So,
+   * I might be able to use the complete Events.t as the type here, rather than
+   * another stub Event module type here. *)
+  type t = { content : Yojson.Safe.t
+           ; m_type  : string
+           }
+end
+
+module Presence = struct
+  (* NOTE: List of events, I still need to sort out Events.t though. Are all
+   * presence events room events? I don't remember. (check) *)
+  type t = { events : Event.t list }
+end
+
+module AccountData = struct
+  (* NOTE: List of events, I still need to sort out Events.t though. What kind
+   * of events are these? I don't remember. (check) *)
+  type t = { events : Event.t list }
+end
+
+module DeviceLists = struct
+  (* NOTE: E2E encryption related *)
+  type t
+end
+
+module OneTimeKeysCount = struct
+  (* NOTE: E2E encryption related *)
+  type t
+end
+
+module Sync = struct
+  type t = { next_batch                 : string
+           ; rooms                      : Rooms.t
+           ; presence                   : Presence.t
+           ; account_data               : AccountData.t
+           ; to_device                  : DeviceLists.t
+           ; device_one_time_keys_count : OneTimeKeysCount.t
+           }
+end
