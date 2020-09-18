@@ -498,8 +498,9 @@ module Room = struct
     | State of { content : Content.t; prev_content : Content.t option }
 
   module Common = struct
-    type unsigned = { age : int
+    type unsigned = { age              : int option
                     ; redacted_because : string option
+                    ; transaction_id   : string option
                     } [@@deriving of_yojson]
 
     type t = { m_type           : string [@key "type"]
@@ -518,7 +519,7 @@ module Room = struct
     let open Result in
     Common.of_yojson j >>= fun com ->
     let content = U.member "content" j |> Content.of_yojson com.m_type in
-    if Option.is_none com.state_key then
+    if Option.is_some com.state_key then
       let prev_content = U.member "prev_content" j
                          |> Content.of_yojson com.m_type
                          |> Result.ok in
@@ -592,37 +593,75 @@ module Call = struct
              } [@@deriving of_yojson]
   end
 
-  type t =
-    | Invite of Invite.t
-    | Candidates of Candidates.t
-    | Answer of Answer.t
-    | Hangup of Hangup.t
+  module Content = struct
+    type t =
+      | Invite of Invite.t
+      | Candidates of Candidates.t
+      | Answer of Answer.t
+      | Hangup of Hangup.t
 
-  let invite m = Invite m
-  let candidates m = Candidates m
-  let answer m = Answer m
-  let hangup m = Hangup m
+    let invite m     = Invite m
+    let candidates m = Candidates m
+    let answer m     = Answer m
+    let hangup m     = Hangup m
 
-  (* TODO: Note call events will have to have a common component as well, so
-   * this is actually kindof orphaned here. Will need to tie it in with the
-   * other events I think. Need to go over the specs more. *)
+    let of_yojson m_type c =
+      match m_type with
+      | "m.call.invite"     -> Invite.of_yojson c     |> Result.map ~f:invite
+      | "m.call.candidates" -> Candidates.of_yojson c |> Result.map ~f:candidates
+      | "m.call.answer"     -> Answer.of_yojson c     |> Result.map ~f:answer
+      | "m.call.hangup"     -> Hangup.of_yojson c     |> Result.map ~f:hangup
+      | _                   -> Result.fail "Unknown call event type."
+
+  end
+
+  module Common = struct
+    type unsigned = { age              : int option
+                    ; redacted_because : string option
+                    ; transaction_id   : string option
+                    } [@@deriving of_yojson]
+
+    type t = { m_type           : string [@key "type"]
+             ; event_id         : string
+             ; sender           : string
+             ; origin_server_ts : int
+             ; unsigned         : unsigned option
+             ; room_id          : string
+             } [@@deriving of_yojson]
+  end
+
+  type t = Common.t * Content.t
+
+  let of_yojson j =
+    let open Result in
+    Common.of_yojson j >>= fun com ->
+    let content = U.member "content" j |> Content.of_yojson com.m_type in
+    content >>| fun c -> com, c
 end
 
 module Presence = struct
-  (* NOTE: user that this applies to is indicated by the top level "sender"
-   *  field. (This stuff is in the content field as usual.) *)
-  type t = { avatar_url       : string option
-           ; displayname      : string option
-           ; last_active_ago  : int option (* in milliseconds *)
-           ; presence         : Types.Presence.t (* TODO: needs of_yojson. Move here? *)
-           ; currently_active : bool option
-           ; status_msg       : string option
-           }
+  type content = { avatar_url       : string option
+                 ; displayname      : string option
+                 ; last_active_ago  : int option (* in milliseconds *)
+                 ; presence         : Types.Presence.t
+                 ; currently_active : bool option
+                 ; status_msg       : string option
+                 } [@@deriving of_yojson]
+
+  type t = { m_type  : string [@key "type"]
+           ; sender  : string  (* indicates user that this applies to *)
+           ; content : content
+           } [@@deriving of_yojson]
 end
 
 module Typing = struct
   (* NOTE: An "Ephemeral" event. *)
-  type t = { user_ids : string list } [@@deriving of_yojson]
+  type content = { user_ids : string list } [@@deriving of_yojson]
+
+  type t = { m_type  : string [@key "type"]
+           ; room_id : string
+           ; content : content
+           } [@@deriving of_yojson]
 end
 
 module Receipt = struct
@@ -642,45 +681,67 @@ module Receipt = struct
 
   type receipts = { read : users option [@key "m.read"] } [@@deriving of_yojson]
 
-  type alist = (string * receipts) list [@@deriving of_yojson]
+  type content_alist = (string * receipts) list [@@deriving of_yojson]
 
   (* map from event_id to map from user_id to timestamp *)
-  type t = (string, receipts, String.comparator_witness) Map.t
+  type content = (string, receipts, String.comparator_witness) Map.t
 
-  let of_yojson j =
-    alist_of_yojson j |> Result.bind ~f:begin fun a ->
+  let content_of_yojson j =
+    content_alist_of_yojson j |> Result.bind ~f:begin fun a ->
       try Map.of_alist_exn (module String) a |> Result.return
       with _ -> Result.fail "Invalid event_id -> receipts map."
     end
+
+  type t = { m_type  : string [@key "type"]
+           ; room_id : string
+           ; content : content
+           } [@@deriving of_yojson]
 end
 
 module FullyRead = struct
-  type t = { event_id : string } [@@deriving of_yojson]
+  type content = { event_id : string } [@@deriving of_yojson]
+
+  type t = { m_type  : string [@key "type"]
+           ; room_id : string
+           ; content : content
+           } [@@deriving of_yojson]
 end
 
 module IdentityServer = struct
-  type t = { base_url : string option } [@@deriving of_yojson]
+  type content = { base_url : string option } [@@deriving of_yojson]
+
+  type t = { m_type : string [@key "type"]
+           ; content : content
+           } [@@deriving of_yojson]
 end
 
 module Direct = struct
   (* map from user_id to list of room_ids indicating what rooms are considered
    * "direct" rooms for that user. *)
-  type alist = (string * (string list)) list [@@deriving of_yojson]
+  type content_alist = (string * (string list)) list [@@deriving of_yojson]
 
-  type t = (string, string list, String.comparator_witness) Map.t
+  type content = (string, string list, String.comparator_witness) Map.t
 
-  let of_yojson j =
-    alist_of_yojson j |> Result.bind ~f:begin fun a ->
+  let content_of_yojson j =
+    content_alist_of_yojson j |> Result.bind ~f:begin fun a ->
       try Map.of_alist_exn (module String) a |> Result.return
       with _ -> Result.fail "Invalid user_id -> room_id list map."
     end
+
+  type t = { m_type  : string [@key "type"]
+           ; content : content
+           } [@@deriving of_yojson]
 end
 
 module IgnoredUserList = struct
   (* NOTE: The yojson object is empty at this time according to spec. *)
   type ignored_users = (string * Yojson.Safe.t) list [@@deriving of_yojson]
 
-  type t = { ignored_users : ignored_users } [@@deriving of_yojson]
+  type content = { ignored_users : ignored_users } [@@deriving of_yojson]
+
+  type t = { m_type  : string [@key "type"]
+           ; content : content
+           } [@@deriving of_yojson]
 end
 
 module Tag = struct
@@ -701,5 +762,53 @@ module Tag = struct
       with _ -> Result.fail "Invalid tag string -> order float map."
     end
 
-  type t = { tags : tag_map } [@@deriving of_yojson]
+  type content = { tags : tag_map } [@@deriving of_yojson]
+
+  type t = { m_type  : string [@key "type"]
+           ; content : content
+           } [@@deriving of_yojson]
 end
+
+type t =
+  | Room of Room.t
+  | Call of Call.t
+  | Presence of Presence.t
+  | Typing of Typing.t
+  | Receipt of Receipt.t
+  | FullyRead of FullyRead.t
+  | IdentityServer of IdentityServer.t
+  | Direct of Direct.t
+  | IgnoredUserList of IgnoredUserList.t
+  | Tag of Tag.t
+
+let room e              = Room e
+let call e              = Call e
+let presence e          = Presence e
+let typing e            = Typing e
+let receipt e           = Receipt e
+let fully_read e        = FullyRead e
+let identity_server e   = IdentityServer e
+let direct e            = Direct e
+let ignored_user_list e = IgnoredUserList e
+let tag e               = Tag e
+
+let is_room_type m =
+  String.is_prefix m ~prefix:"m.room" || String.equal m "m.sticker"
+
+let is_call_type m = String.is_prefix m ~prefix:"m.call"
+
+let of_yojson j =
+  let open Result in
+  match U.member "type" j |> U.to_string_option with
+  | Some m when is_room_type m -> Room.of_yojson j            >>| room
+  | Some m when is_call_type m -> Call.of_yojson j            >>| call
+  | Some "m.presence"          -> Presence.of_yojson j        >>| presence
+  | Some "m.typing"            -> Typing.of_yojson j          >>| typing
+  | Some "m.receipt"           -> Receipt.of_yojson j         >>| receipt
+  | Some "m.fully_read"        -> FullyRead.of_yojson j       >>| fully_read
+  | Some "m.identity_server"   -> IdentityServer.of_yojson j  >>| identity_server
+  | Some "m.direct"            -> Direct.of_yojson j          >>| direct
+  | Some "m.ignored_user_list" -> IgnoredUserList.of_yojson j >>| ignored_user_list
+  | Some "m.tag"               -> Tag.of_yojson j             >>| tag
+  | Some s                     -> Result.fail ("Invalid event type: " ^ s)
+  | None                       -> Result.fail "Missing event type field."
