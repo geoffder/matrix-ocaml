@@ -1,3 +1,5 @@
+open Base
+
 module Credential = struct
   type t = Password of string | AuthToken of string
 end
@@ -17,12 +19,12 @@ module Presence = struct
     | Online      -> "online"
     | Unavailable -> "unavailable"
 
-  (* Not sure if needed yet. *)
-  let of_string = function
-    | "offline"     -> Offline
-    | "online"      -> Online
-    | "unavailable"
-    | _             -> Unavailable
+  let of_yojson = function
+    | `String "offline"     -> Result.return Offline
+    | `String "online"      -> Result.return Online
+    | `String "unavailable" -> Result.return Unavailable
+    | `String s             -> Result.fail ("Invalid presence type: " ^ s)
+    | _                     -> Result.fail "Presence must be Yojson string."
 end
 
 module MessageDirection = struct
