@@ -731,7 +731,15 @@ end
 
 module IgnoredUserList = struct
   (* NOTE: The yojson object is empty at this time according to spec. *)
-  type ignored_users = (string * Yojson.Safe.t) list [@@deriving of_yojson]
+  type ignored_users_alist = (string * Yojson.Safe.t) list [@@deriving of_yojson]
+
+  type ignored_users = Yojson.Safe.t string_map
+
+  let ignored_users_of_yojson j =
+    ignored_users_alist_of_yojson j |> Result.bind ~f:begin fun a ->
+      try Map.of_alist_exn (module String) a |> Result.return
+      with _ -> Result.fail "Invalid user_id -> empty json map."
+    end
 
   type content = { ignored_users : ignored_users } [@@deriving of_yojson]
 
