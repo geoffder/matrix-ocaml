@@ -2,6 +2,8 @@ open Base
 open Yojson
 open Neo_infix
 
+type 'a string_map = (string, 'a, String.comparator_witness) Map.t
+
 (* NOTE:
  * Upon looking over the setup in nio/responses.py I think that I will try to
  * avoid some of the ceremony and generate the appropriate events and other
@@ -38,6 +40,10 @@ module JoinedRooms = struct
     >> List.map ~f:Safe.Util.to_string
 end
 
+module EventList = struct
+  type t = { events : Events.t list } [@@deriving of_yojson]
+end
+
 module RoomMember = struct
   type t = { user_id      : string
            ; display_name : string
@@ -46,9 +52,9 @@ module RoomMember = struct
 end
 
 module Device = struct
-  type t = { id: string
-           ; display_name : string
-           ; last_seen_ip : string
+  type t = { id             : string
+           ; display_name   : string
+           ; last_seen_ip   : string
            ; last_seen_date : string (* FIXME: Should be a datetime type? *)
            }
 end
@@ -61,62 +67,75 @@ module RoomInfo = struct
   type t
 end
 
-module Rooms = struct
-  type t = { invite : (string, InviteInfo.t, String.comparator_witness) Map.t
-           ; join   : (string, RoomInfo.t, String.comparator_witness) Map.t
-           ; leave  : (string, RoomInfo.t, String.comparator_witness) Map.t
-           }
+module Timeline = struct
+  type t = { events     : Events.t list option
+           ; limited    : bool option
+           ; prev_batch : string
+           } [@@deriving of_yojson]
 end
 
-module DeviceList = struct
+module RoomSummary = struct
   type t
 end
 
-module Event = struct
-  (* NOTE: Seems like this Event json type is lacking all of the non-content
-   * info other than the "type" field which will help in the digestion of the
-   * content json into an Events module type. No need for the Common.t data
-   * described there. If that is missing in this basic response Event object,
-   * should I be organizing things a bit differently if sync is the main way
-   *  most events are brought in? *)
+module InvitedRooms = struct
+  type info = { summary              : RoomSummary.t option
+              ; state                : EventList.t option
+              ; timeline             : Timeline.t option
+              ; ephemeral            : EventList.t option
+              ; account_data         : EventList.t option
+              ; unread_notifications : string option (* TODO: counts data type *)
+              }
 
-  (* NOTE: Looking at the example sync response in the spec, the "presence"
-   * events list element has "type": "m.presence", and a "sender" field. So,
-   * I might be able to use the complete Events.t as the type here, rather than
-   * another stub Event module type here. *)
-  type t = { content : Yojson.Safe.t
-           ; m_type  : string
+  type t = info string_map
+end
+
+module JoinedRooms = struct
+  type t
+end
+
+module LeftRooms = struct
+  type t
+end
+
+module Rooms = struct
+  type t = { invite : InvitedRooms.t
+           ; join   : JoinedRooms.t
+           ; leave  : LeftRooms.t
            }
 end
 
-module Presence = struct
-  (* NOTE: List of events, I still need to sort out Events.t though. Are all
-   * presence events room events? I don't remember. (check) *)
-  type t = { events : Event.t list }
-end
-
-module AccountData = struct
-  (* NOTE: List of events, I still need to sort out Events.t though. What kind
-   * of events are these? I don't remember. (check) *)
-  type t = { events : Event.t list }
+module ToDevice = struct
+  type t
 end
 
 module DeviceLists = struct
   (* NOTE: E2E encryption related *)
-  type t
+  type t = { changed : string list option
+           ; left    : string list option
+           } [@@derived of_yojson]
 end
 
 module OneTimeKeysCount = struct
   (* NOTE: E2E encryption related *)
-  type t
+  type alist = (string * int) list [@@deriving of_yojson]
+
+  type t = int string_map
+
+  let of_yojson j =
+    alist_of_yojson j |> Result.bind ~f:begin fun s ->
+      try Map.of_alist_exn (module String) s |> Result.return
+      with _ -> Result.fail "Invalid algorithm -> unclaimed count int map."
+    end
 end
 
 module Sync = struct
   type t = { next_batch                 : string
-           ; rooms                      : Rooms.t
-           ; presence                   : Presence.t
-           ; account_data               : AccountData.t
-           ; to_device                  : DeviceLists.t
-           ; device_one_time_keys_count : OneTimeKeysCount.t
+           ; rooms                      : Rooms.t option
+           ; presence                   : EventList.t option
+           ; account_data               : EventList.t option
+           ; to_device                  : ToDevice.t option
+           ; device_lists               : DeviceLists.t option
+           ; device_one_time_keys_count : OneTimeKeysCount.t option
            }
 end
