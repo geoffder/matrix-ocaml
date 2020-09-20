@@ -1,7 +1,9 @@
 open Base
 (* open Neo_infix *)
 
+(* aliases *)
 module U = Yojson.Safe.Util
+type 'a string_map = (string, 'a, String.comparator_witness) Map.t
 
 module JsonWebKey = struct
   type t = { kty     : string
@@ -15,7 +17,7 @@ end
 module EncryptedFile = struct
   type hashes_alist = (string * string) list [@@deriving of_yojson]
 
-  type hashes_map = (string, string, String.comparator_witness) Map.t
+  type hashes_map = string string_map
 
   let hashes_map_of_yojson j =
     hashes_alist_of_yojson j |> Result.bind ~f:begin fun s ->
@@ -262,16 +264,11 @@ module Room = struct
       | _                -> Result.fail "Missing / invalid membership field."
 
     (* TODO: Need to read more into this... This is the basic structure though.
-     * Probably should just make it a map then.
      * See: https://matrix.org/docs/spec/appendices#signing-json *)
     type signatures_alist = (string * (string * string) list) list
     [@@deriving of_yojson]
 
-    type signatures =
-      ( string
-      , (string, string, String.comparator_witness) Map.t
-      , String.comparator_witness
-      ) Map.t
+    type signatures = (string string_map) string_map
 
     let signatures_of_yojson j =
       signatures_alist_of_yojson j |> Result.bind ~f:begin fun s ->
@@ -341,7 +338,7 @@ module Room = struct
     type string_int_alist = (string * int) list
     [@@deriving of_yojson]
 
-    type string_int_map = (string, int, String.comparator_witness) Map.t
+    type string_int_map = int string_map
 
     let string_int_map_of_yojson j =
       string_int_alist_of_yojson j |> Result.bind ~f:begin fun s ->
@@ -392,7 +389,7 @@ module Room = struct
 
     type cipher_alist = (string * ciphertext_info) list [@@deriving of_yojson]
 
-    type cipher_map = (string, ciphertext_info, String.comparator_witness) Map.t
+    type cipher_map = ciphertext_info string_map
 
     let cipher_map_of_yojson j =
       cipher_alist_of_yojson j |> Result.bind ~f:begin fun c ->
@@ -666,12 +663,11 @@ end
 
 module Receipt = struct
   (* NOTE: Ephemeral event. *)
-  (* TODO: Convert alists to Maps *)
   type receipt = { ts : int option } [@@deriving of_yojson]
 
   type users_alist = (string * receipt) list [@@deriving of_yojson]
 
-  type users = (string, receipt, String.comparator_witness) Map.t
+  type users = receipt string_map
 
   let users_of_yojson j =
     users_alist_of_yojson j |> Result.bind ~f:begin fun u ->
@@ -684,7 +680,7 @@ module Receipt = struct
   type content_alist = (string * receipts) list [@@deriving of_yojson]
 
   (* map from event_id to map from user_id to timestamp *)
-  type content = (string, receipts, String.comparator_witness) Map.t
+  type content = receipts string_map
 
   let content_of_yojson j =
     content_alist_of_yojson j |> Result.bind ~f:begin fun a ->
@@ -720,7 +716,7 @@ module Direct = struct
    * "direct" rooms for that user. *)
   type content_alist = (string * (string list)) list [@@deriving of_yojson]
 
-  type content = (string, string list, String.comparator_witness) Map.t
+  type content = (string list) string_map
 
   let content_of_yojson j =
     content_alist_of_yojson j |> Result.bind ~f:begin fun a ->
@@ -754,7 +750,7 @@ module Tag = struct
 
   type tag_alist = (string * tag) list [@@deriving of_yojson]
 
-  type tag_map = (string, tag, String.comparator_witness) Map.t
+  type tag_map = tag string_map
 
   let tag_map_of_yojson j =
     tag_alist_of_yojson j |> Result.bind ~f:begin fun a ->
