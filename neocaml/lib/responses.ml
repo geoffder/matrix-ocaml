@@ -59,83 +59,111 @@ module Device = struct
            }
 end
 
-module InviteInfo = struct
-  type t
-end
-
-module RoomInfo = struct
-  type t
-end
-
-module Timeline = struct
-  type t = { events     : Events.t list option
-           ; limited    : bool option
-           ; prev_batch : string
-           } [@@deriving of_yojson]
-end
-
-module RoomSummary = struct
-  type t
-end
-
-module InvitedRooms = struct
-  type info = { summary              : RoomSummary.t option
-              ; state                : EventList.t option
-              ; timeline             : Timeline.t option
-              ; ephemeral            : EventList.t option
-              ; account_data         : EventList.t option
-              ; unread_notifications : string option (* TODO: counts data type *)
-              }
-
-  type t = info string_map
-end
-
-module JoinedRooms = struct
-  type t
-end
-
-module LeftRooms = struct
-  type t
-end
-
-module Rooms = struct
-  type t = { invite : InvitedRooms.t
-           ; join   : JoinedRooms.t
-           ; leave  : LeftRooms.t
-           }
-end
-
-module ToDevice = struct
-  type t
-end
-
-module DeviceLists = struct
-  (* NOTE: E2E encryption related *)
-  type t = { changed : string list option
-           ; left    : string list option
-           } [@@derived of_yojson]
-end
-
-module OneTimeKeysCount = struct
-  (* NOTE: E2E encryption related *)
-  type alist = (string * int) list [@@deriving of_yojson]
-
-  type t = int string_map
-
-  let of_yojson j =
-    alist_of_yojson j |> Result.bind ~f:begin fun s ->
-      try Map.of_alist_exn (module String) s |> Result.return
-      with _ -> Result.fail "Invalid algorithm -> unclaimed count int map."
-    end
-end
-
 module Sync = struct
+  module Timeline = struct
+    type t = { events     : Events.t list option
+             ; limited    : bool option
+             ; prev_batch : string
+             } [@@deriving of_yojson]
+  end
+
+  module RoomSummary = struct
+    type t = { heroes               : string list option [@key "m.heroes"]
+             ; joined_member_count  : int option [@key "m.joined_member_count"]
+             ; invited_member_count : int option [@key "m.invited_member_count"]
+             } [@@deriving of_yojson]
+  end
+
+  module UnreadNotificationCounts = struct
+    type t = { highlight_count    : int option
+             ; notification_count : int option
+             } [@@deriving of_yojson]
+  end
+
+  module JoinedRooms = struct
+    type info = { summary              : RoomSummary.t option
+                ; state                : EventList.t option
+                ; timeline             : Timeline.t option
+                ; ephemeral            : EventList.t option
+                ; account_data         : EventList.t option
+                ; unread_notifications : UnreadNotificationCounts.t option
+                } [@@deriving of_yojson]
+
+    type info_alist = (string * info) list [@@deriving of_yojson]
+
+    type t = info string_map
+
+    let of_yojson j =
+      info_alist_of_yojson j |> Result.bind ~f:begin fun s ->
+        try Map.of_alist_exn (module String) s |> Result.return
+        with _ -> Result.fail "Invalid room_id -> joined room map."
+      end
+  end
+
+  module InvitedRooms = struct
+    type info = { invite_state : EventList.t option } [@@deriving of_yojson]
+
+    type info_alist = (string * info) list [@@deriving of_yojson]
+
+    type t = info string_map
+
+    let of_yojson j =
+      info_alist_of_yojson j |> Result.bind ~f:begin fun s ->
+        try Map.of_alist_exn (module String) s |> Result.return
+        with _ -> Result.fail "Invalid room_id -> invited room map."
+      end
+  end
+
+  module LeftRooms = struct
+    type info = { state        : EventList.t option
+                ; timeline     : Timeline.t option
+                ; account_data : EventList.t option
+                } [@@deriving of_yojson]
+
+    type info_alist = (string * info) list [@@deriving of_yojson]
+
+    type t = info string_map
+
+    let of_yojson j =
+      info_alist_of_yojson j |> Result.bind ~f:begin fun s ->
+        try Map.of_alist_exn (module String) s |> Result.return
+        with _ -> Result.fail "Invalid room_id -> left room map."
+      end
+  end
+
+  module Rooms = struct
+    type t = { invite : InvitedRooms.t option
+             ; join   : JoinedRooms.t option
+             ; leave  : LeftRooms.t option
+             } [@@deriving of_yojson]
+  end
+
+  module DeviceLists = struct
+    (* NOTE: E2E encryption related *)
+    type t = { changed : string list option
+             ; left    : string list option
+             } [@@deriving of_yojson]
+  end
+
+  module OneTimeKeysCount = struct
+    (* NOTE: E2E encryption related *)
+    type alist = (string * int) list [@@deriving of_yojson]
+
+    type t = int string_map
+
+    let of_yojson j =
+      alist_of_yojson j |> Result.bind ~f:begin fun s ->
+        try Map.of_alist_exn (module String) s |> Result.return
+        with _ -> Result.fail "Invalid algorithm -> unclaimed count int map."
+      end
+  end
+
   type t = { next_batch                 : string
            ; rooms                      : Rooms.t option
            ; presence                   : EventList.t option
            ; account_data               : EventList.t option
-           ; to_device                  : ToDevice.t option
+           ; to_device                  : EventList.t option
            ; device_lists               : DeviceLists.t option
            ; device_one_time_keys_count : OneTimeKeysCount.t option
-           }
+           } [@@deriving of_yojson]
 end
