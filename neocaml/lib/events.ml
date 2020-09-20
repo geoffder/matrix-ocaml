@@ -773,6 +773,21 @@ module Tag = struct
            } [@@deriving of_yojson]
 end
 
+module NewDevice = struct
+  (* NOTE: Does this only ever occur in the ToDevice section of the sync
+   *  response? Also what other events can actually happen in there? If they are
+   * local to there only, then consider putting them (along with this) in the
+   * relevant module in responses.ml rather than here. *)
+  type content = { device_id : string
+                 ; rooms     : string list
+                 } [@@deriving of_yojson]
+
+  type t = { m_type  : string [@key "type"]
+           ; sender  : string
+           ; content : content
+           } [@@deriving of_yojson]
+end
+
 type t =
   | Room of Room.t
   | Call of Call.t
@@ -784,6 +799,7 @@ type t =
   | Direct of Direct.t
   | IgnoredUserList of IgnoredUserList.t
   | Tag of Tag.t
+  | NewDevice of NewDevice.t
 
 let room e              = Room e
 let call e              = Call e
@@ -795,6 +811,7 @@ let identity_server e   = IdentityServer e
 let direct e            = Direct e
 let ignored_user_list e = IgnoredUserList e
 let tag e               = Tag e
+let new_device e        = NewDevice e
 
 let is_room_type m =
   String.is_prefix m ~prefix:"m.room" || String.equal m "m.sticker"
@@ -814,5 +831,6 @@ let of_yojson j =
   | Some "m.direct"            -> Direct.of_yojson j          >>| direct
   | Some "m.ignored_user_list" -> IgnoredUserList.of_yojson j >>| ignored_user_list
   | Some "m.tag"               -> Tag.of_yojson j             >>| tag
+  | Some "m.new_device"        -> NewDevice.of_yojson j       >>| new_device
   | Some s                     -> Result.fail ("Invalid event type: " ^ s)
   | None                       -> Result.fail "Missing event type field."
