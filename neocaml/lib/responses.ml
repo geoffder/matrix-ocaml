@@ -3,7 +3,6 @@ open Yojson
 open Neo_infix
 open Yojson_helpers
 
-(* module U = Yojson.Safe.Util *)
 type 'a string_map = (string, 'a, String.comparator_witness) Map.t
 
 module JoinedRooms = struct

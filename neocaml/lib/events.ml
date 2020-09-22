@@ -479,8 +479,22 @@ module Room = struct
    * ; prev_content   : Room event (power levels in this case)
    * ; prev_sender    : string
    * ; age            : int
-   *  } *)
+   *  }
+   *
+   * NOTE: From consulting the spec, m.room.member seems to provide a good
+   * example of use of "unsigned", turns out that despite being listed under
+   * content, it is actually referring to the top-level unsigned field. The
+   * common age field is in unsigned, but along with it appears invite_room_state.
+   * I need to restructure Room.t to take this into account.
+   *
+   * Looks like formed unsigned example including replaces_state and the member
+   * one including invite_room_state (which includes events e.g. requires
+   * recursion to full impl) are all of the additional unsigned contents that I
+   * need to address. Looks like I should make the respective types pull out the
+   * relevant fields? *)
   module Common = struct
+    (* NOTE: redacted_because amd transaction_id seem to be common for room/timeline
+     * events, though they aren't the only possible optional fields. *)
     type unsigned = { age              : int option    [@default None]
                     ; redacted_because : string option [@default None]
                     ; transaction_id   : string option [@default None]
