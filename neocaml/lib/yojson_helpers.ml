@@ -1,4 +1,5 @@
 open Base
+open Neo_infix
 
 module U = Yojson.Safe.Util
 
@@ -16,6 +17,40 @@ let json_of_option con opt : Yojson.Safe.t =
  * throwing ones (make my own set of basics. This will allow me to use Result
  * monad versions from ppx_deriving_yojson rather than having to generate exn
  * ones as well) *)
-let alist_of_yojson safe_to j =
-  try U.to_assoc j |> List.map ~f:(fun (k, v) -> k, safe_to v) |> Result.return
-  with _ -> Result.fail "Invalid alist."
+let assoc_of_yojson j =
+  try U.to_assoc j |> Result.return
+  with _ -> Result.fail "Input yojson is not an `Assoc."
+
+let string_of_yojson j =
+  try U.to_string j |> Result.return
+  with _ -> Result.fail "Input yojson is not a `String."
+
+let float_of_yojson j =
+  try U.to_float j |> Result.return
+  with _ -> Result.fail "Input yojson is not a `Float."
+
+let int_of_yojson j =
+  try U.to_int j |> Result.return
+  with _ -> Result.fail "Input yojson is not an `Int."
+
+let bool_of_yojson j =
+  try U.to_bool j |> Result.return
+  with _ -> Result.fail "Input yojson is not a `Bool."
+
+let list_of_yojson j =
+  try U.to_list j |> Result.return
+  with _ -> Result.fail "Input yojson is not a `List."
+
+let typed_list_of_yojson of_yojson j =
+  list_of_yojson j |> Result.bind ~f:(List.map ~f:of_yojson >> Result.all)
+
+let alist_of_yojson of_yojson j =
+  let open Result in
+  let pair_of_yojson (k, yo_v) = of_yojson yo_v >>| fun v -> k, v in
+  assoc_of_yojson j >>= (List.map ~f:pair_of_yojson >> Result.all)
+
+let string_map_of_yojson of_yojson j =
+  let open Result in
+  alist_of_yojson of_yojson j >>= fun l ->
+  try Map.of_alist_exn (module String) l |> Result.return
+  with _ -> Result.fail "Invalid 'a string_map."
