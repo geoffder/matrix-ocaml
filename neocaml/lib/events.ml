@@ -1,8 +1,9 @@
 open Base
 (* open Neo_infix *)
+open Yojson_helpers
 
 (* aliases *)
-module U = Yojson.Safe.Util
+(* module U = Yojson.Safe.Util *)
 type 'a string_map = (string, 'a, String.comparator_witness) Map.t
 
 module JsonWebKey = struct
@@ -15,12 +16,10 @@ module JsonWebKey = struct
 end
 
 module EncryptedFile = struct
-  type hashes_alist = (string * string) list [@@deriving of_yojson]
-
   type hashes_map = string string_map
 
   let hashes_map_of_yojson j =
-    hashes_alist_of_yojson j |> Result.bind ~f:begin fun s ->
+    alist_of_yojson U.to_string j |> Result.bind ~f:begin fun s ->
       try Map.of_alist_exn (module String) s |> Result.return
       with _ -> Result.fail "Invalid hashes map."
     end
@@ -34,21 +33,21 @@ module EncryptedFile = struct
 end
 
 module ThumbnailInfo = struct
-  type t = { h        : int option
-           ; w        : int option
-           ; mimetype : string option
-           ; size     : int option
+  type t = { h        : int option    [@default None]
+           ; w        : int option    [@default None]
+           ; mimetype : string option [@default None]
+           ; size     : int option    [@default None]
            } [@@deriving of_yojson]
 end
 
 module ImageInfo = struct
-  type t = { h              : int option
-           ; w              : int option
-           ; mimetype       : string option
-           ; size           : int option
-           ; thumbnail_info : ThumbnailInfo.t option
-           ; thumbnail_url  : string option option
-           ; thumbnail_file : EncryptedFile.t option
+  type t = { h              : int option             [@default None]
+           ; w              : int option             [@default None]
+           ; mimetype       : string option          [@default None]
+           ; size           : int option             [@default None]
+           ; thumbnail_info : ThumbnailInfo.t option [@default None]
+           ; thumbnail_url  : string option          [@default None]
+           ; thumbnail_file : EncryptedFile.t option [@default None]
            } [@@deriving of_yojson]
 end
 
@@ -72,91 +71,91 @@ module Room = struct
   module Message = struct
     module Text = struct
       type t = { body           : string
-               ; format         : string option
-               ; formatted_body : string option
+               ; format         : string option [@default None]
+               ; formatted_body : string option [@default None]
                } [@@deriving of_yojson]
     end
 
     module Emote = struct
       type t = { body           : string
-               ; format         : string option
-               ; formatted_body : string option
+               ; format         : string option [@default None]
+               ; formatted_body : string option [@default None]
                } [@@deriving of_yojson]
     end
 
     module Notice = struct
       type t = { body           : string
-               ; format         : string option
-               ; formatted_body : string option
+               ; format         : string option [@default None]
+               ; formatted_body : string option [@default None]
                } [@@deriving of_yojson]
     end
 
     module Image = struct
       (* NOTE: url is required if unencrypted, file is required if encrypted. *)
       type t = { body : string
-               ; info : ImageInfo.t option
-               ; url  : string option
-               ; file : EncryptedFile.t option
+               ; info : ImageInfo.t option     [@default None]
+               ; url  : string option          [@default None]
+               ; file : EncryptedFile.t option [@default None]
                } [@@deriving of_yojson]
     end
 
     module File = struct
-      type info = { mimetype : string option
-                  ; size     : int option
-                  ; thumbnail_url : string option
-                  ; thumbnail_file : EncryptedFile.t option
-                  ; thumbnail_info : ThumbnailInfo.t option
+      type info = { mimetype : string option                [@default None]
+                  ; size     : int option                   [@default None]
+                  ; thumbnail_url : string option           [@default None]
+                  ; thumbnail_file : EncryptedFile.t option [@default None]
+                  ; thumbnail_info : ThumbnailInfo.t option [@default None]
                   } [@@deriving of_yojson]
 
       type t = { body     : string
-               ; filename : string option
-               ; info     : info option
-               ; url      : string option
-               ; file     : EncryptedFile.t option
+               ; filename : string option          [@default None]
+               ; info     : info option            [@default None]
+               ; url      : string option          [@default None]
+               ; file     : EncryptedFile.t option [@default None]
                } [@@deriving of_yojson]
     end
 
     module Audio = struct
-      type info = { duration : int option
-                  ; mimetype : string option
-                  ; size     : int option
+      type info = { duration : int option    [@default None]
+                  ; mimetype : string option [@default None]
+                  ; size     : int option    [@default None]
                   } [@@deriving of_yojson]
 
       type t = { body     : string
-               ; info     : info option
-               ; url      : string option
-               ; file     : EncryptedFile.t option
+               ; info     : info option            [@default None]
+               ; url      : string option          [@default None]
+               ; file     : EncryptedFile.t option [@default None]
                } [@@deriving of_yojson]
     end
 
     module Location = struct
-      type info = { thumbnail_url  : string option
-                  ; thumbnail_file : EncryptedFile.t option
-                  ; thumbnail_info : ThumbnailInfo.t option
+      type info = { thumbnail_url  : string option          [@default None]
+                  ; thumbnail_file : EncryptedFile.t option [@default None]
+                  ; thumbnail_info : ThumbnailInfo.t option [@default None]
                   } [@@deriving of_yojson]
 
       type t = { body     : string
                ; geo_uri  : string
-               ; info     : info option
+               ; info     : info option [@default None]
                } [@@deriving of_yojson]
     end
 
     module Video = struct
-      type info = { duration       : int option
-                  ; h              : int option
-                  ; w              : int option
-                  ; mimetype       : string option
-                  ; size           : int option
-                  ; thumbnail_url  : string option
-                  ; thumbnail_file : EncryptedFile.t option
-                  ; thumbnail_info : ThumbnailInfo.t option
+      type info = { duration       : int option             [@default None]
+                  ; h              : int option             [@default None]
+                  ; w              : int option             [@default None]
+                  ; mimetype       : string option          [@default None]
+                  ; size           : int option             [@default None]
+                  ; thumbnail_url  : string option          [@default None]
+                  ; thumbnail_file : EncryptedFile.t option [@default None]
+                  ; thumbnail_info : ThumbnailInfo.t option [@default None]
                   } [@@deriving of_yojson]
 
       (* NOTE: url or file is required depending on encryption. *)
       type t = { body : string
-               ; info : info option
-               ; url  : string option
-               ; file : EncryptedFile.t option
+               ; info : info option            [@default None]
+               ; url  : string option          [@default None]
+               ; file : EncryptedFile.t option [@default None]
                } [@@deriving of_yojson]
     end
 
@@ -215,9 +214,9 @@ module Room = struct
                          } [@@deriving of_yojson]
 
     type t = { creator      : string
-             ; federate     : bool option
-             ; room_version : string option
-             ; predecessor  : previous_room option
+             ; federate     : bool option          [@default None]
+             ; room_version : string option        [@default None]
+             ; predecessor  : previous_room option [@default None]
              } [@@deriving of_yojson]
   end
 
@@ -300,21 +299,22 @@ module Room = struct
                           ; sender    : string
                           } [@@deriving of_yojson]
 
-    type unsigned_data = { invite_room_state : stripped_state list option
-                         } [@@deriving of_yojson]
+    type unsigned_data =
+      { invite_room_state : stripped_state list option [@default None]
+      } [@@deriving of_yojson]
 
-    type t = { avatar_url         : string option
-             ; displayname        : string option
+    type t = { avatar_url         : string option        [@default None]
+             ; displayname        : string option        [@default None]
              ; membership         : membership
-             ; is_direct          : bool option
-             ; third_party_invite : invite option
-             ; unsigned           : unsigned_data option
+             ; is_direct          : bool option          [@default None]
+             ; third_party_invite : invite option        [@default None]
+             ; unsigned           : unsigned_data option [@default None]
              } [@@deriving of_yojson]
   end
 
   module CanonicalAlias = struct
-    type t = { alias       : string option
-             ; alt_aliases : string list option
+    type t = { alias       : string option      [@default None]
+             ; alt_aliases : string list option [@default None]
              } [@@deriving of_yojson]
   end
 
@@ -327,35 +327,35 @@ module Room = struct
   end
 
   module Avatar = struct
-    type t = { info : ImageInfo.t option
+    type t = { info : ImageInfo.t option [@default None]
              ; url  : string
              } [@@deriving of_yojson]
   end
 
   module PowerLevels = struct
-    type notifications = { room : int option } [@@deriving of_yojson]
+    type notifications =
+      { room : int option [@default None] } [@@deriving of_yojson]
 
-    type string_int_alist = (string * int) list
-    [@@deriving of_yojson]
+    (* type string_int_alist = (string * int) list [@@deriving of_yojson] *)
 
     type string_int_map = int string_map
 
     let string_int_map_of_yojson j =
-      string_int_alist_of_yojson j |> Result.bind ~f:begin fun s ->
+      alist_of_yojson U.to_int j |> Result.bind ~f:begin fun s ->
         try Map.of_alist_exn (module String) s |> Result.return
         with _ -> Result.fail "Invalid string -> int Map."
       end
 
-    type t = { ban            : int option
-             ; events         : string_int_map option
-             ; events_default : int option
-             ; invite         : int option
-             ; kick           : int option
-             ; redact         : int option
-             ; state_default  : int option
-             ; users          : string_int_map option
-             ; users_default  : int option
-             ; notifications  : notifications option
+    type t = { ban            : int option            [@default None]
+             ; events         : string_int_map option [@default None]
+             ; events_default : int option            [@default None]
+             ; invite         : int option            [@default None]
+             ; kick           : int option            [@default None]
+             ; redact         : int option            [@default None]
+             ; state_default  : int option            [@default None]
+             ; users          : string_int_map option [@default None]
+             ; users_default  : int option            [@default None]
+             ; notifications  : notifications option  [@default None]
              } [@@deriving of_yojson]
   end
 
@@ -366,20 +366,20 @@ module Room = struct
   module Encryption = struct
     (* algorithm is an enum that must be 'm.megolm.v1.aes-sha2' *)
     type t = { algorithm            : string
-             ; rotation_period_ms   : int option
-             ; rotation_period_msgs : int option
+             ; rotation_period_ms   : int option [@default None]
+             ; rotation_period_msgs : int option [@default None]
              } [@@deriving of_yojson]
   end
 
   module Redaction = struct
-    type t = { reason : string option } [@@deriving of_yojson]
+    type t = { reason : string option [@default None] } [@@deriving of_yojson]
   end
 
   module Encrypted = struct
     (* algorithm is an enum that must be 'm.olm.v1.curve25519-aes-sha2' or
      * 'm.megolm.v1.aes-sha2' *)
-    type ciphertext_info = { body     : string option
-                           ; olm_type : int option
+    type ciphertext_info = { body     : string option [@default None]
+                           ; olm_type : int option    [@default None]
                            }
 
     let ciphertext_info_of_yojson j =
@@ -411,8 +411,8 @@ module Room = struct
     type t = { algorithm  : string
              ; ciphertext : ciphertext
              ; sender_key : string
-             ; device_id  : string option
-             ; session_id : string option
+             ; device_id  : string option [@default None]
+             ; session_id : string option [@default None]
              } [@@deriving of_yojson]
   end
 
@@ -495,18 +495,18 @@ module Room = struct
     | State of { content : Content.t; prev_content : Content.t option }
 
   module Common = struct
-    type unsigned = { age              : int option
-                    ; redacted_because : string option
-                    ; transaction_id   : string option
+    type unsigned = { age              : int option    [@default None]
+                    ; redacted_because : string option [@default None]
+                    ; transaction_id   : string option [@default None]
                     } [@@deriving of_yojson]
 
     type t = { m_type           : string [@key "type"]
              ; event_id         : string
              ; sender           : string
              ; origin_server_ts : int
-             ; unsigned         : unsigned option
+             ; unsigned         : unsigned option [@default None]
              ; room_id          : string
-             ; state_key        : string option
+             ; state_key        : string option   [@default None]
              } [@@deriving of_yojson]
   end
 
@@ -586,7 +586,7 @@ module Call = struct
 
     type t = { call_id : string
              ; version : int
-             ; reason : reason option
+             ; reason : reason option [@default None]
              } [@@deriving of_yojson]
   end
 
@@ -613,16 +613,16 @@ module Call = struct
   end
 
   module Common = struct
-    type unsigned = { age              : int option
-                    ; redacted_because : string option
-                    ; transaction_id   : string option
+    type unsigned = { age              : int option    [@default None]
+                    ; redacted_because : string option [@default None]
+                    ; transaction_id   : string option [@default None]
                     } [@@deriving of_yojson]
 
     type t = { m_type           : string [@key "type"]
              ; event_id         : string
              ; sender           : string
              ; origin_server_ts : int
-             ; unsigned         : unsigned option
+             ; unsigned         : unsigned option [@default None]
              ; room_id          : string
              } [@@deriving of_yojson]
   end
@@ -637,12 +637,12 @@ module Call = struct
 end
 
 module Presence = struct
-  type content = { avatar_url       : string option
-                 ; displayname      : string option
-                 ; last_active_ago  : int option (* in milliseconds *)
+  type content = { avatar_url       : string option    [@default None]
+                 ; displayname      : string option    [@default None]
+                 ; last_active_ago  : int option       [@default None] (* in milliseconds *)
                  ; presence         : Types.Presence.t
-                 ; currently_active : bool option
-                 ; status_msg       : string option
+                 ; currently_active : bool option      [@default None]
+                 ; status_msg       : string option    [@default None]
                  } [@@deriving of_yojson]
 
   type t = { m_type  : string [@key "type"]
@@ -663,7 +663,7 @@ end
 
 module Receipt = struct
   (* NOTE: Ephemeral event. *)
-  type receipt = { ts : int option } [@@deriving of_yojson]
+  type receipt = { ts : int option [@default None] } [@@deriving of_yojson]
 
   type users_alist = (string * receipt) list [@@deriving of_yojson]
 
@@ -675,7 +675,8 @@ module Receipt = struct
       with _ -> Result.fail "Invalid user receipt map."
     end
 
-  type receipts = { read : users option [@key "m.read"] } [@@deriving of_yojson]
+  type receipts =
+    { read : users option [@key "m.read"] [@default None] } [@@deriving of_yojson]
 
   type content_alist = (string * receipts) list [@@deriving of_yojson]
 
@@ -698,13 +699,13 @@ module FullyRead = struct
   type content = { event_id : string } [@@deriving of_yojson]
 
   type t = { m_type  : string [@key "type"]
-           ; room_id : string
+           ; room_id : string option [@default None]
            ; content : content
            } [@@deriving of_yojson]
 end
 
 module IdentityServer = struct
-  type content = { base_url : string option } [@@deriving of_yojson]
+  type content = { base_url : string option [@default None] } [@@deriving of_yojson]
 
   type t = { m_type : string [@key "type"]
            ; content : content
@@ -754,7 +755,7 @@ module Tag = struct
    * NOTE: Does this go in the room module since it pertains to a particular
    *  room? It's a bit unclear from what I've read so far where I should expect
    * this event to pop up. *)
-  type tag = { order : float option } [@@deriving of_yojson]
+  type tag = { order : float option [@default None] } [@@deriving of_yojson]
 
   type tag_alist = (string * tag) list [@@deriving of_yojson]
 
@@ -800,6 +801,7 @@ type t =
   | IgnoredUserList of IgnoredUserList.t
   | Tag of Tag.t
   | NewDevice of NewDevice.t
+  | Unknown of Yojson.Safe.t
 
 let room e              = Room e
 let call e              = Call e
@@ -812,6 +814,7 @@ let direct e            = Direct e
 let ignored_user_list e = IgnoredUserList e
 let tag e               = Tag e
 let new_device e        = NewDevice e
+let unknown e           = Unknown e
 
 let is_room_type m =
   String.is_prefix m ~prefix:"m.room" || String.equal m "m.sticker"
@@ -832,5 +835,6 @@ let of_yojson j =
   | Some "m.ignored_user_list" -> IgnoredUserList.of_yojson j >>| ignored_user_list
   | Some "m.tag"               -> Tag.of_yojson j             >>| tag
   | Some "m.new_device"        -> NewDevice.of_yojson j       >>| new_device
-  | Some s                     -> Result.fail ("Invalid event type: " ^ s)
+  (* | Some s                     -> Result.fail ("Invalid event type: " ^ s) *)
+  | Some _                     -> Result.return j             >>| unknown
   | None                       -> Result.fail "Missing event type field."
