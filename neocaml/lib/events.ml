@@ -18,11 +18,7 @@ end
 module EncryptedFile = struct
   type hashes_map = string string_map
 
-  let hashes_map_of_yojson j =
-    alist_of_yojson U.to_string j |> Result.bind ~f:begin fun s ->
-      try Map.of_alist_exn (module String) s |> Result.return
-      with _ -> Result.fail "Invalid hashes map."
-    end
+  let hashes_map_of_yojson = string_map_of_yojson string_of_yojson
 
   type t = { url    : string
            ; key    : JsonWebKey.t
@@ -264,19 +260,10 @@ module Room = struct
 
     (* TODO: Need to read more into this... This is the basic structure though.
      * See: https://matrix.org/docs/spec/appendices#signing-json *)
-    type signatures_alist = (string * (string * string) list) list
-    [@@deriving of_yojson]
-
     type signatures = (string string_map) string_map
 
-    let signatures_of_yojson j =
-      signatures_alist_of_yojson j |> Result.bind ~f:begin fun s ->
-        try
-          List.map ~f:(fun (k, v) -> (k, Map.of_alist_exn (module String) v)) s
-          |> Map.of_alist_exn (module String)
-          |> Result.return
-        with _ -> Result.fail "Invalid signatures map."
-      end
+    let signatures_of_yojson =
+      string_map_of_yojson (string_map_of_yojson string_of_yojson)
 
     type signed = { mxid       : string
                   ; signatures : signatures
@@ -336,24 +323,18 @@ module Room = struct
     type notifications =
       { room : int option [@default None] } [@@deriving of_yojson]
 
-    (* type string_int_alist = (string * int) list [@@deriving of_yojson] *)
+    type int_string_map = int string_map
 
-    type string_int_map = int string_map
-
-    let string_int_map_of_yojson j =
-      alist_of_yojson U.to_int j |> Result.bind ~f:begin fun s ->
-        try Map.of_alist_exn (module String) s |> Result.return
-        with _ -> Result.fail "Invalid string -> int Map."
-      end
+    let int_string_map_of_yojson = string_map_of_yojson int_of_yojson
 
     type t = { ban            : int option            [@default None]
-             ; events         : string_int_map option [@default None]
+             ; events         : int_string_map option [@default None]
              ; events_default : int option            [@default None]
              ; invite         : int option            [@default None]
              ; kick           : int option            [@default None]
              ; redact         : int option            [@default None]
              ; state_default  : int option            [@default None]
-             ; users          : string_int_map option [@default None]
+             ; users          : int_string_map option [@default None]
              ; users_default  : int option            [@default None]
              ; notifications  : notifications option  [@default None]
              } [@@deriving of_yojson]
@@ -387,15 +368,9 @@ module Room = struct
       let olm_type = U.member "type" j |> U.to_int_option in
       Result.return { body; olm_type }
 
-    type cipher_alist = (string * ciphertext_info) list [@@deriving of_yojson]
-
     type cipher_map = ciphertext_info string_map
 
-    let cipher_map_of_yojson j =
-      cipher_alist_of_yojson j |> Result.bind ~f:begin fun c ->
-        try Map.of_alist_exn (module String) c |> Result.return
-        with _ -> Result.fail "Invalid cipher map."
-      end
+    let cipher_map_of_yojson = string_map_of_yojson ciphertext_info_of_yojson
 
     type ciphertext =
       | Cipher of string
@@ -494,6 +469,17 @@ module Room = struct
     | Event of { content : Content.t }
     | State of { content : Content.t; prev_content : Content.t option }
 
+  (* FIXME: From looking at a sync response from my test rooms, the prev_content
+   * is actually contained within "unsigned" in one of the power_levels events in
+   * a timeline list. I'm going to need to revamp how I delinate between result
+   * events and state events. (Need to be more flexible it seems.)
+   *
+   *  There unsigned is:
+   * { replaces_state : string_map
+   * ; prev_content   : Room event (power levels in this case)
+   * ; prev_sender    : string
+   * ; age            : int
+   *  } *)
   module Common = struct
     type unsigned = { age              : int option    [@default None]
                     ; redacted_because : string option [@default None]
@@ -665,29 +651,17 @@ module Receipt = struct
   (* NOTE: Ephemeral event. *)
   type receipt = { ts : int option [@default None] } [@@deriving of_yojson]
 
-  type users_alist = (string * receipt) list [@@deriving of_yojson]
-
   type users = receipt string_map
 
-  let users_of_yojson j =
-    users_alist_of_yojson j |> Result.bind ~f:begin fun u ->
-      try Map.of_alist_exn (module String) u |> Result.return
-      with _ -> Result.fail "Invalid user receipt map."
-    end
+  let users_of_yojson = string_map_of_yojson receipt_of_yojson
 
   type receipts =
     { read : users option [@key "m.read"] [@default None] } [@@deriving of_yojson]
 
-  type content_alist = (string * receipts) list [@@deriving of_yojson]
-
   (* map from event_id to map from user_id to timestamp *)
   type content = receipts string_map
 
-  let content_of_yojson j =
-    content_alist_of_yojson j |> Result.bind ~f:begin fun a ->
-      try Map.of_alist_exn (module String) a |> Result.return
-      with _ -> Result.fail "Invalid event_id -> receipts map."
-    end
+  let content_of_yojson = string_map_of_yojson receipts_of_yojson
 
   type t = { m_type  : string [@key "type"]
            ; room_id : string
@@ -715,15 +689,10 @@ end
 module Direct = struct
   (* map from user_id to list of room_ids indicating what rooms are considered
    * "direct" rooms for that user. *)
-  type content_alist = (string * (string list)) list [@@deriving of_yojson]
-
   type content = (string list) string_map
 
-  let content_of_yojson j =
-    content_alist_of_yojson j |> Result.bind ~f:begin fun a ->
-      try Map.of_alist_exn (module String) a |> Result.return
-      with _ -> Result.fail "Invalid user_id -> room_id list map."
-    end
+  let content_of_yojson =
+    string_map_of_yojson (typed_list_of_yojson string_of_yojson)
 
   type t = { m_type  : string [@key "type"]
            ; content : content
@@ -732,15 +701,9 @@ end
 
 module IgnoredUserList = struct
   (* NOTE: The yojson object is empty at this time according to spec. *)
-  type ignored_users_alist = (string * Yojson.Safe.t) list [@@deriving of_yojson]
-
   type ignored_users = Yojson.Safe.t string_map
 
-  let ignored_users_of_yojson j =
-    ignored_users_alist_of_yojson j |> Result.bind ~f:begin fun a ->
-      try Map.of_alist_exn (module String) a |> Result.return
-      with _ -> Result.fail "Invalid user_id -> empty json map."
-    end
+  let ignored_users_of_yojson = string_map_of_yojson (fun j -> Result.return j)
 
   type content = { ignored_users : ignored_users } [@@deriving of_yojson]
 
@@ -757,15 +720,9 @@ module Tag = struct
    * this event to pop up. *)
   type tag = { order : float option [@default None] } [@@deriving of_yojson]
 
-  type tag_alist = (string * tag) list [@@deriving of_yojson]
-
   type tag_map = tag string_map
 
-  let tag_map_of_yojson j =
-    tag_alist_of_yojson j |> Result.bind ~f:begin fun a ->
-      try Map.of_alist_exn (module String) a |> Result.return
-      with _ -> Result.fail "Invalid tag string -> order float map."
-    end
+  let tag_map_of_yojson = string_map_of_yojson tag_of_yojson
 
   type content = { tags : tag_map } [@@deriving of_yojson]
 

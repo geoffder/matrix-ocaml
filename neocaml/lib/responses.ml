@@ -3,10 +3,6 @@ open Yojson
 open Neo_infix
 open Yojson_helpers
 
-(* TODO: See TODO note in yojson_helpers.ml. Remove { exn = true } and use of
- * of_yojson_exn functions after that is completed. Then continue bringing
- * events.ml up to speed. *)
-
 (* module U = Yojson.Safe.Util *)
 type 'a string_map = (string, 'a, String.comparator_witness) Map.t
 
@@ -69,6 +65,8 @@ module Sync = struct
   end
 
   module JoinedRooms = struct
+    (* NOTE: Not sure whether to bother with weird fields like msc count below
+     * or just resign to using non-strict everywhere... *)
     type info =
       { summary              : RoomSummary.t option [@default None]
       ; state                : StateList.t option   [@default None]
@@ -76,43 +74,32 @@ module Sync = struct
       ; ephemeral            : EventList.t option   [@default None]
       ; account_data         : EventList.t option   [@default None]
       ; unread_notifications : UnreadNotificationCounts.t option [@default None]
-      } [@@deriving of_yojson { exn = true }]
+      ; msc2654_unread_count : int option [@key "org.matrix.msc2654.unread_count"] [@default None]
+      } [@@deriving of_yojson { strict = false }]
 
     type t = info string_map
 
-    let of_yojson j =
-      alist_of_yojson info_of_yojson_exn j |> Result.bind ~f:begin fun s ->
-        try Map.of_alist_exn (module String) s |> Result.return
-        with _ -> Result.fail "Invalid room_id -> joined room map."
-      end
+    let of_yojson = string_map_of_yojson info_of_yojson
   end
 
   module InvitedRooms = struct
     type info = { invite_state : EventList.t option [@default None] }
-    [@@deriving of_yojson { exn = true }]
+    [@@deriving of_yojson]
 
     type t = info string_map
 
-    let of_yojson j =
-      alist_of_yojson info_of_yojson_exn j |> Result.bind ~f:begin fun s ->
-        try Map.of_alist_exn (module String) s |> Result.return
-        with _ -> Result.fail "Invalid room_id -> invited room map."
-      end
+    let of_yojson = string_map_of_yojson info_of_yojson
   end
 
   module LeftRooms = struct
     type info = { state        : EventList.t option [@default None]
                 ; timeline     : Timeline.t option  [@default None]
                 ; account_data : EventList.t option [@default None]
-                } [@@deriving of_yojson { exn = true }]
+                } [@@deriving of_yojson]
 
     type t = info string_map
 
-    let of_yojson j =
-      alist_of_yojson info_of_yojson_exn j |> Result.bind ~f:begin fun s ->
-        try Map.of_alist_exn (module String) s |> Result.return
-        with _ -> Result.fail "Invalid room_id -> left room map."
-      end
+    let of_yojson = string_map_of_yojson info_of_yojson
   end
 
   module Rooms = struct
@@ -133,11 +120,7 @@ module Sync = struct
     (* NOTE: E2E encryption related *)
     type t = int string_map
 
-    let of_yojson j =
-      alist_of_yojson U.to_int j |> Result.bind ~f:begin fun s ->
-        try Map.of_alist_exn (module String) s |> Result.return
-        with _ -> Result.fail "Invalid algorithm -> unclaimed count int map."
-      end
+    let of_yojson = string_map_of_yojson int_of_yojson
   end
 
   type t =
