@@ -482,7 +482,8 @@ module Room = struct
                         ; "transaction_id"
                         ; "replaces_state"
                         ; "prev_sender"
-                        ]
+                        ; "prev_content" (* NOTE: Undecided on state event impl *)
+                        ] |> Set.of_list (module String)
 
     (* NOTE: Tracking the keys I know of that aren't in unsigned_keys, if this
      * does not grow much, target these specifically rather than the even
@@ -505,16 +506,29 @@ module Room = struct
    * Right now the only one I know of is invite_room_state for Member events.
    * This will make sure I don't miss any while I am working things out. *)
   let extra_unsigned j =
-    Yojson.Safe.Util.keys j @ Common.unsigned_keys
-    |> List.dedup_and_sort ~compare:String.compare
+    Yojson.Safe.Util.keys j
+    |> Set.of_list (module String)
+    |> (fun s -> Set.diff s Common.unsigned_keys)
+    |> Set.to_list
+    |> List.map ~f:(fun k -> [ (k, Yojson.Safe.Util.member k j) ] |> yo_assoc)
+    |> List.fold ~init:(`Assoc []) ~f:U.combine
+
+  (* Alternative implementation to extra_unsigned that targets particular keys
+   * that only show up in unsigned alongside particular events. This is
+   * obviously faster, should switch to this once I know what all the uncommon
+   * ones are. Also, consider treating prev_convent like this rather than as a
+   * special record field alongside content. *)
+  let uncommon_unsigned j =
+    Common.uncommon_keys
     |> List.map ~f:(fun k -> [ (k, Yojson.Safe.Util.member k j) ] |> yo_assoc)
     |> List.fold ~init:(`Assoc []) ~f:U.combine
 
   let of_yojson j =
     let open Result in
     Common.of_yojson j >>= fun com ->
+    let unsigned = U.member "unsigned" j |> extra_unsigned in
     let content = U.member "content" j
-                  |> U.combine (extra_unsigned j)
+                  |> U.combine unsigned
                   |> Content.of_yojson com.m_type in
     if Option.is_some com.state_key then
       let prev_content = U.member "prev_content" j
