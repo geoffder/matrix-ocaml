@@ -43,7 +43,8 @@ end
 
 module Sync = struct
   module Timeline = struct
-    type t = { events     : Events.t list option [@default None]
+    (* NOTE: Try using Events.Room.t but might need to be Events.t *)
+    type t = { events     : Events.Room.t list option [@default None]
              ; limited    : bool option          [@default None]
              ; prev_batch : string
              } [@@deriving of_yojson]
@@ -69,9 +70,9 @@ module Sync = struct
     type info =
       { summary              : RoomSummary.t option [@default None]
       ; state                : StateList.t option   [@default None]
-      ; timeline             : StateList.t option   [@default None]
+      ; timeline             : Timeline.t option    [@default None]
       ; ephemeral            : EventList.t option   [@default None]
-      ; account_data         : EventList.t option   [@default None]
+      (* ; account_data         : EventList.t option   [@default None] *)
       ; unread_notifications : UnreadNotificationCounts.t option [@default None]
       ; msc2654_unread_count : int option [@key "org.matrix.msc2654.unread_count"] [@default None]
       } [@@deriving of_yojson { strict = false }]
