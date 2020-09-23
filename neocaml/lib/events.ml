@@ -274,28 +274,12 @@ module Room = struct
                   ; signed       : signed
                   } [@@deriving of_yojson]
 
-    (* TODO: This will require some extra care. The content is a room state
-     * event, like m.room.name (referred to by m_type / "type"). Can I make the
-     * content type Events.Room.t and use its of_yojson? I might not be able to
-     * since it would require recursive types across the modules? Would I have
-     * to move this module under all the state ones, then have a jank type
-     * within this one that replicates the state parts of Events.Room.t ? *)
-    type stripped_state = { content   : Yojson.Safe.t (* Events.Room.t *)
-                          ; state_key : string
-                          ; m_type    : string [@key "type"]
-                          ; sender    : string
-                          } [@@deriving of_yojson]
-
-    type unsigned_data =
-      { invite_room_state : stripped_state list option [@default None]
-      } [@@deriving of_yojson]
-
     type t = { avatar_url         : string option        [@default None]
              ; displayname        : string option        [@default None]
              ; membership         : membership
              ; is_direct          : bool option          [@default None]
              ; third_party_invite : invite option        [@default None]
-             ; unsigned           : unsigned_data option [@default None]
+             ; invite_room_state  : Yojson.Safe.t  (* FIXME: stripped_state list *)
              } [@@deriving of_yojson]
   end
 
@@ -469,36 +453,35 @@ module Room = struct
     | Event of { content : Content.t }
     | State of { content : Content.t; prev_content : Content.t option }
 
-  (* FIXME: From looking at a sync response from my test rooms, the prev_content
-   * is actually contained within "unsigned" in one of the power_levels events in
-   * a timeline list. I'm going to need to revamp how I delinate between result
-   * events and state events. (Need to be more flexible it seems.)
-   *
-   *  There unsigned is:
-   * { replaces_state : string_map
-   * ; prev_content   : Room event (power levels in this case)
-   * ; prev_sender    : string
-   * ; age            : int
-   *  }
-   *
-   * NOTE: From consulting the spec, m.room.member seems to provide a good
-   * example of use of "unsigned", turns out that despite being listed under
-   * content, it is actually referring to the top-level unsigned field. The
-   * common age field is in unsigned, but along with it appears invite_room_state.
-   * I need to restructure Room.t to take this into account.
-   *
-   * Looks like formed unsigned example including replaces_state and the member
-   * one including invite_room_state (which includes events e.g. requires
-   * recursion to full impl) are all of the additional unsigned contents that I
-   * need to address. Looks like I should make the respective types pull out the
-   * relevant fields? *)
+  module StrippedState = struct
+    type t = { content   : Yojson.Safe.t (* Events.Room.t *)
+             ; state_key : string
+             ; m_type    : string [@key "type"]
+             ; sender    : string
+             } [@@deriving of_yojson]
+  end
+
   module Common = struct
     (* NOTE: redacted_because amd transaction_id seem to be common for room/timeline
      * events, though they aren't the only possible optional fields. *)
     type unsigned = { age              : int option    [@default None]
                     ; redacted_because : string option [@default None]
                     ; transaction_id   : string option [@default None]
-                    } [@@deriving of_yojson]
+                    ; replaces_state   : string option [@default None]
+                    ; prev_sender      : string option [@default None]
+                    } [@@deriving of_yojson { strict = false }]
+
+    let unsigned_keys = [ "age"
+                        ; "redacted_because"
+                        ; "transaction_id"
+                        ; "replaces_state"
+                        ; "prev_sender"
+                        ]
+
+    (* NOTE: Tracking the keys I know of that aren't in unsigned_keys, if this
+     * does not grow much, target these specifically rather than the even
+     * hackier approach used in `extra_unsigned` below. *)
+    let uncommon_keys = [ "invite_room_state" ]
 
     type t = { m_type           : string [@key "type"]
              ; event_id         : string
@@ -507,15 +490,26 @@ module Room = struct
              ; unsigned         : unsigned option [@default None]
              ; room_id          : string
              ; state_key        : string option   [@default None]
-             } [@@deriving of_yojson]
+             } [@@deriving of_yojson { strict = false }]
   end
 
   type t = Common.t * event_content
 
+  (* NOTE: Bit of a hacky solution to the special unsigned_data fields issue.
+   * Right now the only one I know of is invite_room_state for Member events.
+   * This will make sure I don't miss any while I am working things out. *)
+  let extra_unsigned j =
+    Yojson.Safe.Util.keys j @ Common.unsigned_keys
+    |> List.dedup_and_sort ~compare:String.compare
+    |> List.map ~f:(fun k -> Yojson.Safe.Util.member k j)
+    |> List.fold ~init:(`Assoc []) ~f:U.combine
+
   let of_yojson j =
     let open Result in
     Common.of_yojson j >>= fun com ->
-    let content = U.member "content" j |> Content.of_yojson com.m_type in
+    let content = U.member "content" j
+                  |> U.combine (extra_unsigned j)
+                  |> Content.of_yojson com.m_type in
     if Option.is_some com.state_key then
       let prev_content = U.member "prev_content" j
                          |> Content.of_yojson com.m_type
@@ -624,7 +618,7 @@ module Call = struct
              ; origin_server_ts : int
              ; unsigned         : unsigned option [@default None]
              ; room_id          : string
-             } [@@deriving of_yojson]
+             } [@@deriving of_yojson { strict = false }]
   end
 
   type t = Common.t * Content.t
