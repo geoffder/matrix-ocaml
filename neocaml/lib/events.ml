@@ -2,11 +2,6 @@ open Base
 (* open Neo_infix *)
 open Yojson_helpers
 
-(* TODO: Save a sync response to string again and double check that there are
- * not extra fields that I am missing. I had to make HistoryVisibility.t and
- * Room.Create.t of_yojsons non-strict, though it does not appear that there
- * are any additional fields that could be causing issues. *)
-
 type 'a string_map = (string, 'a, String.comparator_witness) Map.t
 
 module JsonWebKey = struct
@@ -69,16 +64,26 @@ end
 module Room = struct
   module Message = struct
     module Text = struct
-      type t = { body           : string
-               ; format         : string option [@default None]
-               ; formatted_body : string option [@default None]
-               } [@@deriving of_yojson]
+      type in_reply = { event_id : string } [@@deriving of_yojson]
+
+      type relates =
+        { in_reply_to : in_reply option [@key "m.in_reply_to"] [@default None]
+        } [@@deriving of_yojson]
+
+      type t =
+        { body           : string
+        ; format         : string option [@default None]
+        ; formatted_body : string option [@default None]
+        ; msgtype        : string
+        ; relates_to     : relates option [@key "m.relates_to"] [@default None]
+        } [@@deriving of_yojson]
     end
 
     module Emote = struct
       type t = { body           : string
                ; format         : string option [@default None]
                ; formatted_body : string option [@default None]
+               ; msgtype        : string
                } [@@deriving of_yojson]
     end
 
@@ -86,15 +91,17 @@ module Room = struct
       type t = { body           : string
                ; format         : string option [@default None]
                ; formatted_body : string option [@default None]
+               ; msgtype        : string
                } [@@deriving of_yojson]
     end
 
     module Image = struct
       (* NOTE: url is required if unencrypted, file is required if encrypted. *)
-      type t = { body : string
-               ; info : ImageInfo.t option     [@default None]
-               ; url  : string option          [@default None]
-               ; file : EncryptedFile.t option [@default None]
+      type t = { body    : string
+               ; info    : ImageInfo.t option     [@default None]
+               ; url     : string option          [@default None]
+               ; file    : EncryptedFile.t option [@default None]
+               ; msgtype : string
                } [@@deriving of_yojson]
     end
 
@@ -111,6 +118,7 @@ module Room = struct
                ; info     : info option            [@default None]
                ; url      : string option          [@default None]
                ; file     : EncryptedFile.t option [@default None]
+               ; msgtype  : string
                } [@@deriving of_yojson]
     end
 
@@ -124,6 +132,7 @@ module Room = struct
                ; info     : info option            [@default None]
                ; url      : string option          [@default None]
                ; file     : EncryptedFile.t option [@default None]
+               ; msgtype  : string
                } [@@deriving of_yojson]
     end
 
@@ -136,6 +145,7 @@ module Room = struct
       type t = { body     : string
                ; geo_uri  : string
                ; info     : info option [@default None]
+               ; msgtype  : string
                } [@@deriving of_yojson]
     end
 
@@ -151,10 +161,11 @@ module Room = struct
                   } [@@deriving of_yojson]
 
       (* NOTE: url or file is required depending on encryption. *)
-      type t = { body : string
-               ; info : info option            [@default None]
-               ; url  : string option          [@default None]
-               ; file : EncryptedFile.t option [@default None]
+      type t = { body    : string
+               ; info    : info option            [@default None]
+               ; url     : string option          [@default None]
+               ; file    : EncryptedFile.t option [@default None]
+               ; msgtype : string
                } [@@deriving of_yojson]
     end
 
@@ -217,7 +228,7 @@ module Room = struct
              ; federate     : bool option          [@default None]
              ; room_version : string option        [@default None]
              ; predecessor  : previous_room option [@default None]
-             } [@@deriving of_yojson { strict = false }]
+             } [@@deriving of_yojson]
   end
 
   module GuestAccess = struct
@@ -248,7 +259,7 @@ module Room = struct
       | _                        -> Result.fail "Missing/wrong-typed field."
 
     type t = { history_visibility : visibility option [@default None] }
-    [@@deriving of_yojson { strict = false }]
+    [@@deriving of_yojson]
   end
 
   module Member = struct
@@ -282,6 +293,7 @@ module Room = struct
     (* FIXME: invite_room_state : stripped_state list *)
     type t = { avatar_url         : string option        [@default None]
              ; displayname        : string option        [@default None]
+             ; inviter            : string option        [@default None]
              ; membership         : membership
              ; is_direct          : bool option          [@default None]
              ; third_party_invite : invite option        [@default None]
@@ -394,6 +406,23 @@ module Room = struct
              } [@@deriving of_yojson]
   end
 
+  module Widgets = struct
+    (* NOTE: Very rough, the only example I have seen (which this is based on)
+     * is Jitsi. I don't know what other members might be present / whether
+     * these are optional. Don't make unstrict so I can catch the extras. *)
+    type data = { widgetSessionId : string } [@@deriving of_yojson]
+
+    type t = { name   : string
+             ; m_type : string [@key "type"]
+             ; url    : string
+             ; data   : data
+             } [@@deriving of_yojson]
+  end
+
+  module PreviewUrls = struct
+    type t = { disable : bool } [@@deriving of_yojson]
+  end
+
   module Content = struct
     type t =
       | Message of Message.t
@@ -413,6 +442,8 @@ module Room = struct
       | Encrypted of Encrypted.t
       | Tombstone of Tombstone.t
       | Sticker of Sticker.t
+      | Widgets of Widgets.t
+      | PreviewUrls of PreviewUrls.t
 
     let message r            = Message r
     let create r             = Create r
@@ -431,27 +462,31 @@ module Room = struct
     let encrypted r          = Encrypted r
     let tombstone r          = Tombstone r
     let sticker r            = Sticker r
+    let widgets r            = Widgets r
+    let preview_urls r       = PreviewUrls r
 
     let of_yojson m_type c =
       let open Result in
       match m_type with
-      | "m.room.message"            -> Message.of_yojson c           >>| message
-      | "m.room.create"             -> Create.of_yojson c            >>| create
-      | "m.room.guest_access"       -> GuestAccess.of_yojson c       >>| guest_access
-      | "m.room.join_rules"         -> JoinRules.of_yojson c         >>| join_rules
-      | "m.room.history_visibility" -> HistoryVisibility.of_yojson c >>| history_visibility
-      | "m.room.member"             -> Member.of_yojson c            >>| member
-      | "m.room.canonical_alias"    -> CanonicalAlias.of_yojson c    >>| canonical_alias
-      | "m.room.name"               -> Name.of_yojson c              >>| name
-      | "m.room.topic"              -> Topic.of_yojson c             >>| topic
-      | "m.room.avatar"             -> Avatar.of_yojson c            >>| avatar
-      | "m.room.power_levels"       -> PowerLevels.of_yojson c       >>| power_levels
-      | "m.room.pinned_events"      -> PinnedEvents.of_yojson c      >>| pinned_events
-      | "m.room.encryption"         -> Encryption.of_yojson c        >>| encryption
-      | "m.room.redaction"          -> Redaction.of_yojson c         >>| redaction
-      | "m.room.encrypted"          -> Encrypted.of_yojson c         >>| encrypted
-      | "m.room.tombstone"          -> Tombstone.of_yojson c         >>| tombstone
-      | "m.sticker"                 -> Sticker.of_yojson c           >>| sticker
+      | "m.room.message"               -> Message.of_yojson c           >>| message
+      | "m.room.create"                -> Create.of_yojson c            >>| create
+      | "m.room.guest_access"          -> GuestAccess.of_yojson c       >>| guest_access
+      | "m.room.join_rules"            -> JoinRules.of_yojson c         >>| join_rules
+      | "m.room.history_visibility"    -> HistoryVisibility.of_yojson c >>| history_visibility
+      | "m.room.member"                -> Member.of_yojson c            >>| member
+      | "m.room.canonical_alias"       -> CanonicalAlias.of_yojson c    >>| canonical_alias
+      | "m.room.name"                  -> Name.of_yojson c              >>| name
+      | "m.room.topic"                 -> Topic.of_yojson c             >>| topic
+      | "m.room.avatar"                -> Avatar.of_yojson c            >>| avatar
+      | "m.room.power_levels"          -> PowerLevels.of_yojson c       >>| power_levels
+      | "m.room.pinned_events"         -> PinnedEvents.of_yojson c      >>| pinned_events
+      | "m.room.encryption"            -> Encryption.of_yojson c        >>| encryption
+      | "m.room.redaction"             -> Redaction.of_yojson c         >>| redaction
+      | "m.room.encrypted"             -> Encrypted.of_yojson c         >>| encrypted
+      | "m.room.tombstone"             -> Tombstone.of_yojson c         >>| tombstone
+      | "m.sticker"                    -> Sticker.of_yojson c           >>| sticker
+      | "im.vector.modular.widgets"    -> Widgets.of_yojson c           >>| widgets
+      | "org.matrix.room.preview_urls" -> PreviewUrls.of_yojson c       >>| preview_urls
       | m                           -> Result.fail ("Unknown matrix type: " ^ m)
   end
 
@@ -802,7 +837,10 @@ let new_device e        = NewDevice e
 let unknown e           = Unknown e
 
 let is_room_type m =
-  String.is_prefix m ~prefix:"m.room" || String.equal m "m.sticker"
+  String.is_prefix m ~prefix:"m.room"
+  || String.equal m "m.sticker"
+  || String.equal m "im.vector.modular.widgets"
+  || String.equal m "org.matrix.room.preview_urls"
 
 let is_call_type m = String.is_prefix m ~prefix:"m.call"
 
