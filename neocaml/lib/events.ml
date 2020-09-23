@@ -2,8 +2,11 @@ open Base
 (* open Neo_infix *)
 open Yojson_helpers
 
-(* aliases *)
-(* module U = Yojson.Safe.Util *)
+(* TODO: Save a sync response to string again and double check that there are
+ * not extra fields that I am missing. I had to make HistoryVisibility.t and
+ * Room.Create.t of_yojsons non-strict, though it does not appear that there
+ * are any additional fields that could be causing issues. *)
+
 type 'a string_map = (string, 'a, String.comparator_witness) Map.t
 
 module JsonWebKey = struct
@@ -164,7 +167,7 @@ module Room = struct
       | Audio of Audio.t
       | Location of Location.t
       | Video of Video.t
-      | Unknown
+      | Unknown of Yojson.Safe.t
 
     let to_mtype = function
       | Text     _ -> "m.text"
@@ -175,7 +178,7 @@ module Room = struct
       | Audio    _ -> "m.audio"
       | Location _ -> "m.location"
       | Video    _ -> "m.video"
-      | Unknown    -> "unknown message type"
+      | Unknown  _ -> "unknown message type"
 
     let text m     = Text m
     let emote m    = Emote m
@@ -185,6 +188,7 @@ module Room = struct
     let audio m    = Audio m
     let location m = Location m
     let video m    = Video m
+    let unknown m  = Unknown m
 
     let of_yojson content =
       U.member "msgtype" content
@@ -199,7 +203,7 @@ module Room = struct
         | "m.audio"    -> Audio.of_yojson content    |> Result.map ~f:audio
         | "m.location" -> Location.of_yojson content |> Result.map ~f:location
         | "m.video"    -> Video.of_yojson content    |> Result.map ~f:video
-        | _            -> Result.return Unknown
+        | _            -> Result.return content      |> Result.map ~f:unknown
       end
       |> Option.value ~default:(Result.fail "Missing msgtype.")
   end
@@ -213,7 +217,7 @@ module Room = struct
              ; federate     : bool option          [@default None]
              ; room_version : string option        [@default None]
              ; predecessor  : previous_room option [@default None]
-             } [@@deriving of_yojson]
+             } [@@deriving of_yojson { strict = false }]
   end
 
   module GuestAccess = struct
@@ -243,7 +247,8 @@ module Room = struct
       | `String s                -> Result.fail ("Invalid enum value: " ^ s)
       | _                        -> Result.fail "Missing/wrong-typed field."
 
-    type t = { history_visibility : visibility } [@@deriving of_yojson]
+    type t = { history_visibility : visibility option [@default None] }
+    [@@deriving of_yojson { strict = false }]
   end
 
   module Member = struct
@@ -274,12 +279,13 @@ module Room = struct
                   ; signed       : signed
                   } [@@deriving of_yojson]
 
+    (* FIXME: invite_room_state : stripped_state list *)
     type t = { avatar_url         : string option        [@default None]
              ; displayname        : string option        [@default None]
              ; membership         : membership
              ; is_direct          : bool option          [@default None]
              ; third_party_invite : invite option        [@default None]
-             ; invite_room_state  : Yojson.Safe.t  (* FIXME: stripped_state list *)
+             ; invite_room_state  : Yojson.Safe.t option [@default None]
              } [@@deriving of_yojson]
   end
 
@@ -488,7 +494,7 @@ module Room = struct
              ; sender           : string
              ; origin_server_ts : int
              ; unsigned         : unsigned option [@default None]
-             ; room_id          : string
+             ; room_id          : string option   [@default None]
              ; state_key        : string option   [@default None]
              } [@@deriving of_yojson { strict = false }]
   end
@@ -501,7 +507,7 @@ module Room = struct
   let extra_unsigned j =
     Yojson.Safe.Util.keys j @ Common.unsigned_keys
     |> List.dedup_and_sort ~compare:String.compare
-    |> List.map ~f:(fun k -> Yojson.Safe.Util.member k j)
+    |> List.map ~f:(fun k -> [ (k, Yojson.Safe.Util.member k j) ] |> yo_assoc)
     |> List.fold ~init:(`Assoc []) ~f:U.combine
 
   let of_yojson j =
@@ -672,7 +678,7 @@ module Receipt = struct
   let content_of_yojson = string_map_of_yojson receipts_of_yojson
 
   type t = { m_type  : string [@key "type"]
-           ; room_id : string
+           ; room_id : string option [@default None]
            ; content : content
            } [@@deriving of_yojson]
 end
