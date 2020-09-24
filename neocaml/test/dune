@@ -1,2 +1,10 @@
 (test
- (name neocaml))
+ (name neocaml_test)
+ (libraries base
+            neocaml
+            stdio
+            lwt
+            cohttp-lwt-unix
+            yojson
+            ppx_deriving_yojson.runtime)
+ (preprocess (pps ppx_deriving_yojson)))
