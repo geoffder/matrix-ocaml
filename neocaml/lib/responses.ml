@@ -72,7 +72,7 @@ module Sync = struct
       ; state                : StateList.t option   [@default None]
       ; timeline             : Timeline.t option    [@default None]
       ; ephemeral            : EventList.t option   [@default None]
-      (* ; account_data         : EventList.t option   [@default None] *)
+      ; account_data         : EventList.t option   [@default None]
       ; unread_notifications : UnreadNotificationCounts.t option [@default None]
       ; msc2654_unread_count : int option [@key "org.matrix.msc2654.unread_count"] [@default None]
       } [@@deriving of_yojson { strict = false }]

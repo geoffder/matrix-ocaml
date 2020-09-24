@@ -809,6 +809,58 @@ module NewDevice = struct
            } [@@deriving of_yojson]
 end
 
+module PushRules = struct
+  type push_condition = { kind    : string
+                        ; key     : string option [@default None]
+                        ; pattern : string option [@default None]
+                        ; is      : string option [@default None]
+                        } [@@deriving of_yojson]
+
+  (* NOTE: I've seen string and bool for value so far. Consider change to
+   *  something other than json when I have more complete picture. *)
+  type action =
+    | Action of string
+    | Tweak of { set_tweak : string; value : Yojson.Safe.t }
+
+  let action_of_yojson = function
+    | `String s -> Action s |> Result.return
+    | `Assoc _ as assoc ->
+      let value = U.member "value" assoc in
+      U.member "set_tweak" assoc
+      |> U.to_string_option
+      |> Result.of_option ~error:"Invalid push_rule action Tweak."
+      |> Result.map ~f:(fun set_tweak -> Tweak { set_tweak; value })
+    | _ -> Result.fail "Invalid push_rule action Tweak."
+
+  type push_rule = { actions    : action list
+                   ; default    : bool
+                   ; enabled    : bool
+                   ; rule_id    : string
+                   ; conditions : push_condition list option [@default None]
+                   ; pattern    : string option              [@default None]
+                   } [@@deriving of_yojson]
+
+  type ruleset = { content   : push_rule list option [@default None]
+                 ; override  : push_rule list option [@default None]
+                 ; room      : push_rule list option [@default None]
+                 ; sender    : push_rule list option [@default None]
+                 ; underride : push_rule list option [@default None]
+                 } [@@deriving of_yojson]
+
+  type devices = ruleset string_map
+
+  let devices_of_yojson = string_map_of_yojson ruleset_of_yojson
+
+  (* NOTE: device is probably a map, it's empty in the example I have. *)
+  type content = { global : ruleset
+                 ; device : devices option [@default None]
+                 } [@@deriving of_yojson { strict = false }]
+
+  type t = { m_type : string [@key "type"]
+           ; content : content
+           } [@@deriving of_yojson]
+end
+
 type t =
   | Room of Room.t
   | Call of Call.t
@@ -821,6 +873,7 @@ type t =
   | IgnoredUserList of IgnoredUserList.t
   | Tag of Tag.t
   | NewDevice of NewDevice.t
+  | PushRules of PushRules.t
   | Unknown of Yojson.Safe.t
 
 let room e              = Room e
@@ -834,6 +887,7 @@ let direct e            = Direct e
 let ignored_user_list e = IgnoredUserList e
 let tag e               = Tag e
 let new_device e        = NewDevice e
+let push_rules e        = PushRules e
 let unknown e           = Unknown e
 
 let is_room_type m =
@@ -858,6 +912,7 @@ let of_yojson j =
   | Some "m.ignored_user_list" -> IgnoredUserList.of_yojson j >>| ignored_user_list
   | Some "m.tag"               -> Tag.of_yojson j             >>| tag
   | Some "m.new_device"        -> NewDevice.of_yojson j       >>| new_device
+  | Some "m.push_rules"        -> PushRules.of_yojson j       >>| push_rules
   (* | Some s                     -> Result.fail ("Invalid event type: " ^ s) *)
   | Some _                     -> Result.return j             >>| unknown
   | None                       -> Result.fail "Missing event type field."
