@@ -5,7 +5,8 @@ open Neocaml.Neo_infix
 let client = Client.make "https://matrix.org" "@beheddard:matrix.org"
 
 let up_dir ?(n=1) pth =
-  String.split ~on:'/' pth
+  String.chop_suffix_if_exists ~suffix:"/" pth
+  |> String.split ~on:'/'
   |> (fun l -> List.sub ~pos:0 ~len:(List.length l - n) l)
   |> String.concat ~sep:"/"
   |> fun s -> s ^ "/"
