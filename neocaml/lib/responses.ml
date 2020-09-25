@@ -123,6 +123,10 @@ module Sync = struct
     let of_yojson = string_map_of_yojson int_of_yojson
   end
 
+  (* NOTE: many of the event types under account_data in the sync response seem
+   * to be element specific? They don't appear in the matrix spec or in the nio
+   * repo. So I guess you can store arbitrary things in account_data on the
+   * server, such as encryption keys? TODO: Research. *)
   type t =
     { next_batch                 : string
     ; rooms                      : Rooms.t option            [@default None]
