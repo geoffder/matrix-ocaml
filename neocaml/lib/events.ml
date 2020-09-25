@@ -938,11 +938,21 @@ module KeyVerification = struct
   end
 
   module Start = struct
-    (* TODO: There is a pecial case when method is m.sas.v1, m_type is the same. *)
+    (* NOTE: Not sure from specs when (and if) this is used. *)
     type t = { from_device    : string
              ; transaction_id : string
              ; v_method       : string [@key "method"]
              ; next_method    : string option [@default None]
+             } [@@deriving of_yojson]
+  end
+
+  module StartSAS = struct
+    type t = { transaction_id                : string
+             ; v_method                      : string [@key "method"]
+             ; key_agreement_protocols       : string list
+             ; hashes                        : string list
+             ; message_authentication_codes  : string list
+             ; short_authentication_string   : string list
              } [@@deriving of_yojson]
   end
 
@@ -960,7 +970,7 @@ module KeyVerification = struct
              ; key_agreement_protocol      : string
              ; hash                        : string
              ; message_authentication_code : string
-             ; short_authentication_string : string
+             ; short_authentication_string : string list
              ; commitment                  : string
              } [@@deriving of_yojson]
   end
@@ -986,29 +996,36 @@ module KeyVerification = struct
     | Request of Request.t
     | Cancel of Cancel.t
     | Start of Start.t
+    | StartSAS of StartSAS.t
     | Accept of Accept.t
     | Key of Key.t
     | Mac of Mac.t
 
-  let request e = Request e
-  let cancel e  = Cancel e
-  let start e   = Start e
-  let accept e  = Accept e
-  let key e     = Key e
-  let mac e     = Mac e
+  let request e   = Request e
+  let cancel e    = Cancel e
+  let start e     = Start e
+  let start_sas e = StartSAS e
+  let accept e    = Accept e
+  let key e       = Key e
+  let mac e       = Mac e
+
+  let is_sas c =
+    try U.member "method" c |> U.to_string |> String.equal "m.sas.v1"
+    with _ -> false
 
   let of_yojson j =
     let open Result in
     U.member "type" j |> string_of_yojson >>= fun m_type ->
     let c = U.member "content" j in
     match String.chop_prefix_if_exists ~prefix:"m.key.verification." m_type with
-    | "request" -> Request.of_yojson c >>| request
-    | "cancel"  -> Cancel.of_yojson c  >>| cancel
-    | "start"   -> Start.of_yojson c   >>| start
-    | "accept"  -> Accept.of_yojson c  >>| accept
-    | "key"     -> Key.of_yojson c     >>| key
-    | "mac"     -> Mac.of_yojson c     >>| mac
-    | m         -> Result.fail ("Unknown verification type: " ^ m)
+    | "request"              -> Request.of_yojson c   >>| request
+    | "cancel"               -> Cancel.of_yojson c    >>| cancel
+    | "start" when is_sas c  -> StartSAS.of_yojson c  >>| start_sas
+    | "start"                -> Start.of_yojson c     >>| start
+    | "accept" when is_sas c -> Accept.of_yojson c    >>| accept
+    | "key"                  -> Key.of_yojson c       >>| key
+    | "mac"                  -> Mac.of_yojson c       >>| mac
+    | m                      -> Result.fail ("Unknown verification type: " ^ m)
 end
 
 type t =
