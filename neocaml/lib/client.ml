@@ -143,5 +143,6 @@ let sync ?since ?timeout ?filter ?full_state:(full=false) ?set_presence client =
   logged_in client begin fun token ->
     Api.sync ?since ?timeout ?filter ~full_state:full ?set_presence token
     |> send client
-    >>| Yojson.Safe.to_string
+    (* >>| Yojson.Safe.to_string *)
+    >>| Responses.Sync.of_yojson
   end
