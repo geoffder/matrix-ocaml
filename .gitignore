@@ -27,3 +27,8 @@ setup.log
 
 # Local OPAM switch
 _opam/
+
+# secret stuff / junk
+neocaml/test/test_scraps.ml
+neocaml/test/pass.json
+neocaml/test/sync_response.json
