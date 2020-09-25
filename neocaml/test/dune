@@ -1,5 +1,6 @@
-(test
+(library
  (name neocaml_test)
+ (inline_tests)
  (libraries base
             neocaml
             stdio
@@ -7,4 +8,5 @@
             cohttp-lwt-unix
             yojson
             ppx_deriving_yojson.runtime)
- (preprocess (pps ppx_deriving_yojson)))
+            ; ppx_inline_test.runtime-lib)
+ (preprocess (pps ppx_deriving_yojson ppx_inline_test)))
