@@ -861,6 +861,156 @@ module PushRules = struct
            } [@@deriving of_yojson]
 end
 
+(* TODO: to_device events, like key_requests which are part of sync response. *)
+(* TODO: To_Device module? *)
+
+module KeyInfo = struct
+  (* NOTE: Algo is enum that ust be 'm.megolm.v1.aes-sha2'. *)
+  type t = { algorithm   : string
+           ; room_id     : string
+           ; session_id  : string
+           ; session_key : string
+           } [@@deriving of_yojson]
+end
+
+module RoomKey = struct
+  (* NOTE: to-device event *)
+  type t = { content : KeyInfo.t
+           ; m_type  : string [@key "type"]
+           } [@@deriving of_yojson]
+end
+
+module RoomKeyRequest = struct
+  (* NOTE: to-device event *)
+  type action = Request | RequestCancellation
+
+  let action_of_yojson = function
+    | `String "request"              -> Result.return Request
+    | `String "request_cancellation" -> Result.return RequestCancellation
+    | `String s                      -> Result.fail ("Invalid key action: " ^ s)
+    | _                              -> Result.fail "Invalid key action type."
+
+  (* body is required when action is request *)
+  type content = { body                 : KeyInfo.t option [@default None]
+                 ; action               : action
+                 ; requesting_device_id : string
+                 ; request_id           : string
+                 } [@@deriving of_yojson]
+
+  type t = { content : content
+           ; m_type  : string [@key "type"]
+           } [@@deriving of_yojson]
+end
+
+module ForwardedRoomKey = struct
+  (* NOTE: to-device event *)
+  type content = { algorithm                       : string
+                 ; room_id                         : string
+                 ; sender_key                      : string
+                 ; session_id                      : string
+                 ; session_key                     : string
+                 ; sender_claimed_ed25519_key      : string
+                 ; forwarding_curve25519_key_chain : string list
+                 } [@@deriving of_yojson]
+
+  type t = { content : content
+           ; m_type  : string [@key "type"]
+           } [@@deriving of_yojson]
+end
+
+module Dummy = struct
+  (* NOTE: This event type is used to indicate new Olm sessions for end-to-end
+   * encryption. Typically it is encrypted as an m.room.encrypted event, then sent
+   * as a to-device event. *)
+  (* NOTE: content is an emtpy object.*)
+  type t = { content : Yojson.Safe.t
+           ; m_type  : string [@key "type"]
+           } [@@deriving of_yojson]
+end
+
+module KeyVerification = struct
+  module Request = struct
+    type t = { from_device    : string
+             ; transaction_id : string
+             ; methods        : string list
+             ; timestamp      : int
+             } [@@deriving of_yojson]
+  end
+
+  module Start = struct
+    (* TODO: There is a pecial case when method is m.sas.v1, m_type is the same. *)
+    type t = { from_device    : string
+             ; transaction_id : string
+             ; v_method       : string [@key "method"]
+             ; next_method    : string option [@default None]
+             } [@@deriving of_yojson]
+  end
+
+  module Cancel = struct
+    type t = { transaction_id : string
+             ; reason         : string
+             ; code           : string
+             } [@@deriving of_yojson]
+  end
+
+  module Accept = struct
+    (* NOTE: method must be "m.sas.v1" *)
+    type t = { transaction_id              : string
+             ; v_method                    : string [@key "method"]
+             ; key_agreement_protocol      : string
+             ; hash                        : string
+             ; message_authentication_code : string
+             ; short_authentication_string : string
+             ; commitment                  : string
+             } [@@deriving of_yojson]
+  end
+
+  module Key = struct
+    type t = { transaction_id : string
+             ; key            : string
+             } [@@deriving of_yojson]
+  end
+
+  module Mac = struct
+    type mac = string string_map
+
+    let mac_of_yojson = string_map_of_yojson string_of_yojson
+
+    type t = { transaction_id : string
+             ; mac            : mac
+             ; keys           : string
+             } [@@deriving of_yojson]
+  end
+
+  type t =
+    | Request of Request.t
+    | Cancel of Cancel.t
+    | Start of Start.t
+    | Accept of Accept.t
+    | Key of Key.t
+    | Mac of Mac.t
+
+  let request e = Request e
+  let cancel e  = Cancel e
+  let start e   = Start e
+  let accept e  = Accept e
+  let key e     = Key e
+  let mac e     = Mac e
+
+  let of_yojson j =
+    let open Result in
+    U.member "type" j |> string_of_yojson >>= fun m_type ->
+    let c = U.member "content" j in
+    match String.chop_prefix_if_exists ~prefix:"m.key.verification." m_type with
+    | "request" -> Request.of_yojson c >>| request
+    | "cancel"  -> Cancel.of_yojson c  >>| cancel
+    | "start"   -> Start.of_yojson c   >>| start
+    | "accept"  -> Accept.of_yojson c  >>| accept
+    | "key"     -> Key.of_yojson c     >>| key
+    | "mac"     -> Mac.of_yojson c     >>| mac
+    | m         -> Result.fail ("Unknown verification type: " ^ m)
+end
+
 type t =
   | Room of Room.t
   | Call of Call.t
@@ -874,6 +1024,7 @@ type t =
   | Tag of Tag.t
   | NewDevice of NewDevice.t
   | PushRules of PushRules.t
+  | KeyVerification of KeyVerification.t
   | Unknown of Yojson.Safe.t
 
 let room e              = Room e
@@ -888,21 +1039,25 @@ let ignored_user_list e = IgnoredUserList e
 let tag e               = Tag e
 let new_device e        = NewDevice e
 let push_rules e        = PushRules e
+let key_verification e  = KeyVerification e
 let unknown e           = Unknown e
 
 let is_room_type m =
-  String.is_prefix m ~prefix:"m.room"
+  String.is_prefix m ~prefix:"m.room."
   || String.equal m "m.sticker"
   || String.equal m "im.vector.modular.widgets"
   || String.equal m "org.matrix.room.preview_urls"
 
-let is_call_type m = String.is_prefix m ~prefix:"m.call"
+let is_call_type m = String.is_prefix m ~prefix:"m.call."
+
+let is_key_veri m = String.is_prefix m ~prefix:"m.key.verification."
 
 let of_yojson j =
   let open Result in
   match U.member "type" j |> U.to_string_option with
   | Some m when is_room_type m -> Room.of_yojson j            >>| room
   | Some m when is_call_type m -> Call.of_yojson j            >>| call
+  | Some m when is_key_veri m  -> KeyVerification.of_yojson j >>| key_verification
   | Some "m.presence"          -> Presence.of_yojson j        >>| presence
   | Some "m.typing"            -> Typing.of_yojson j          >>| typing
   | Some "m.receipt"           -> Receipt.of_yojson j         >>| receipt
