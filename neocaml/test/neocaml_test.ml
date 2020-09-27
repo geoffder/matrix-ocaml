@@ -4,6 +4,8 @@ open Neocaml.Neo_infix
 
 let client = Client.make "https://matrix.org" "@beheddard:matrix.org"
 
+(* For simple relative pathing from the running directory, which for this module
+ * is neocaml/bin/default/test. *)
 let up_dir ?(n=1) pth =
   String.chop_suffix_if_exists ~suffix:"/" pth
   |> String.split ~on:'/'
@@ -12,7 +14,7 @@ let up_dir ?(n=1) pth =
   |> fun s -> s ^ "/"
 
 let logged =
-  let pass = (Unix.getcwd () |> up_dir ~n:3) ^ "test/pass.json"
+  let pass = "/home/" ^ Unix.getlogin () ^ "/.secrets/neocaml/pass.json"
              |> Yojson.Safe.from_file
              |> Yojson.Safe.Util.member "password"
              |> Yojson.Safe.Util.to_string in
@@ -20,7 +22,8 @@ let logged =
 
 let room_id = "!UDTBpvFlRSZlyIbhvr:matrix.org"
 let prev_batch =
-  "t38-1427171613_757284957_4873410_582557651_411860784_1530319_90440135_287505593_127848"
+  "t38-1427171613_757284957_4873410_582557651" ^
+  "_411860784_1530319_90440135_287505593_127848"
 
 let messages = logged >=> fun c -> Client.room_messages c room_id prev_batch
 
