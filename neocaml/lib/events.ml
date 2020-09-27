@@ -64,71 +64,63 @@ module rec Room : sig
     end
 
     module Emote : sig
-      type t = {
-        body : string;
-        format : string option;
-        formatted_body : string option;
-        msgtype : string;
-      }
+      type t = { body           : string
+               ; format         : string option
+               ; formatted_body : string option
+               ; msgtype        : string
+               }
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
     end
 
     module Notice : sig
-      type t = {
-        body : string;
-        format : string option;
-        formatted_body : string option;
-        msgtype : string;
-      }
+      type t = { body           : string
+               ; format         : string option
+               ; formatted_body : string option
+               ; msgtype        : string
+               }
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
     end
 
     module Image : sig
-      type t = {
-        body : string;
-        info : ImageInfo.t option;
-        url : string option;
-        file : EncryptedFile.t option;
-        msgtype : string;
-      }
+      type t = { body    : string
+               ; info    : ImageInfo.t option
+               ; url     : string option
+               ; file    : EncryptedFile.t option
+               ; msgtype : string
+               }
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
     end
 
     module File : sig
-      type info = {
-        mimetype : string option;
-        size : int option;
-        thumbnail_url : string option;
-        thumbnail_file : EncryptedFile.t option;
-        thumbnail_info : ThumbnailInfo.t option;
-      }
-      type t = {
-        body : string;
-        filename : string option;
-        info : info option;
-        url : string option;
-        file : EncryptedFile.t option;
-        msgtype : string;
-      }
-
+      type info = { mimetype       : string option
+                  ; size           : int option
+                  ; thumbnail_url  : string option
+                  ; thumbnail_file : EncryptedFile.t option
+                  ; thumbnail_info : ThumbnailInfo.t option
+                  }
+      type t = { body     : string
+               ; filename : string option
+               ; info     : info option
+               ; url      : string option
+               ; file     : EncryptedFile.t option
+               ; msgtype  : string
+               }
       val info_of_yojson :
         Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
     end
 
     module Audio : sig
-      type info = {
-        duration : int option;
-        mimetype : string option;
-        size : int option;
-      }
-      type t = {
-        body : string;
-        info : info option;
-        url : string option;
-        file : EncryptedFile.t option;
-        msgtype : string;
-      }
+      type info = { duration : int option
+                  ; mimetype : string option
+                  ; size     : int option
+                  }
+      type t = { body    : string
+               ; info    : info option
+               ; url     : string option
+               ; file    : EncryptedFile.t option
+               ; msgtype : string
+               }
 
       val info_of_yojson :
         Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
@@ -136,41 +128,36 @@ module rec Room : sig
     end
 
     module Location : sig
-      type info = {
-        thumbnail_url : string option;
-        thumbnail_file : EncryptedFile.t option;
-        thumbnail_info : ThumbnailInfo.t option;
-      }
-      type t = {
-        body : string;
-        geo_uri : string;
-        info : info option;
-        msgtype : string;
-      }
-
+      type info = { thumbnail_url  : string option
+                  ; thumbnail_file : EncryptedFile.t option
+                  ; thumbnail_info : ThumbnailInfo.t option
+                  }
+      type t = { body    : string
+               ; geo_uri : string
+               ; info    : info option
+               ; msgtype : string
+               }
       val info_of_yojson :
         Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
     end
 
     module Video : sig
-      type info = {
-        duration : int option;
-        h : int option;
-        w : int option;
-        mimetype : string option;
-        size : int option;
-        thumbnail_url : string option;
-        thumbnail_file : EncryptedFile.t option;
-        thumbnail_info : ThumbnailInfo.t option;
-      }
-      type t = {
-        body : string;
-        info : info option;
-        url : string option;
-        file : EncryptedFile.t option;
-        msgtype : string;
-      }
+      type info = { duration       : int option
+                  ; h              : int option
+                  ; w              : int option
+                  ; mimetype       : string option
+                  ; size           : int option
+                  ; thumbnail_url  : string option
+                  ; thumbnail_file : EncryptedFile.t option
+                  ; thumbnail_info : ThumbnailInfo.t option
+                  }
+      type t = { body    : string
+               ; info    : info option
+               ; url     : string option
+               ; file    : EncryptedFile.t option
+               ; msgtype : string
+               }
       val info_of_yojson :
         Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
@@ -186,6 +173,7 @@ module rec Room : sig
       | Location of Location.t
       | Video of Video.t
       | Unknown of Yojson.Safe.t
+
     val to_mtype  : t -> string
     val text      : Text.t -> t
     val emote     : Emote.t -> t
@@ -200,17 +188,14 @@ module rec Room : sig
   end
 
   module Create : sig
-    type previous_room = {
-      room_id : string;
-      event_id : string;
-    }
-    type t = {
-      creator : string;
-      federate : bool option;
-      room_version : string option;
-      predecessor : previous_room option;
-    }
-
+    type previous_room = { room_id  : string
+                         ; event_id : string
+                         }
+    type t = { creator      : string
+             ; federate     : bool option
+             ; room_version : string option
+             ; predecessor  : previous_room option
+             }
     val previous_room_of_yojson :
       Yojson.Safe.t -> previous_room Ppx_deriving_yojson_runtime.error_or
     val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
@@ -263,10 +248,9 @@ module rec Room : sig
   end
 
   module CanonicalAlias : sig
-    type t = {
-      alias : string option;
-      alt_aliases : string list option;
-    }
+    type t = { alias       : string option
+             ; alt_aliases : string list option
+             }
     val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
   end
 
@@ -288,18 +272,17 @@ module rec Room : sig
   module PowerLevels : sig
     type notifications = { room : int option; }
     type int_string_map = int string_map
-    type t = {
-      ban : int option;
-      events : int_string_map option;
-      events_default : int option;
-      invite : int option;
-      kick : int option;
-      redact : int option;
-      state_default : int option;
-      users : int_string_map option;
-      users_default : int option;
-      notifications : notifications option;
-    }
+    type t = { ban            : int option
+             ; events         : int_string_map option
+             ; events_default : int option
+             ; invite         : int option
+             ; kick           : int option
+             ; redact         : int option
+             ; state_default  : int option
+             ; users          : int_string_map option
+             ; users_default  : int option
+             ; notifications  : notifications option
+             }
     val notifications_of_yojson :
       Yojson.Safe.t -> notifications Ppx_deriving_yojson_runtime.error_or
     val int_string_map_of_yojson :
