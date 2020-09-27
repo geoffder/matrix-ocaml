@@ -45,23 +45,412 @@ module ImageInfo = struct
            } [@@deriving of_yojson]
 end
 
-(* NOTE: This wasn't based on looking at jsons, but rather from a dataclass
- * in nio. I'll focus on the actual jsons from matrix since I need to make
- * the records line up. *)
-(* module Common = struct
- *   type t = { source           : Yojson.Safe.t
- *            ; event_id         : string
- *            ; sender           : string
- *            ; server_timestamp : int
- *            ; decrypted        : bool
- *            ; verified         : bool
- *            ; sender_key       : string option
- *            ; session_id       : string option
- *            ; transaction_id   : string option
- *            }
- * end *)
+module rec Room : sig
+  module Message : sig
+    module Text : sig
+      type in_reply = { event_id : string; }
+      type relates = { in_reply_to : in_reply option; }
+      type t = { body           : string
+               ; format         : string option
+               ; formatted_body : string option
+               ; msgtype        : string
+               ; relates_to     : relates option
+               }
+      val in_reply_of_yojson :
+        Yojson.Safe.t -> in_reply Ppx_deriving_yojson_runtime.error_or
+      val relates_of_yojson :
+        Yojson.Safe.t -> relates Ppx_deriving_yojson_runtime.error_or
+      val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+    end
 
-module Room = struct
+    module Emote : sig
+      type t = {
+        body : string;
+        format : string option;
+        formatted_body : string option;
+        msgtype : string;
+      }
+      val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+    end
+
+    module Notice : sig
+      type t = {
+        body : string;
+        format : string option;
+        formatted_body : string option;
+        msgtype : string;
+      }
+      val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+    end
+
+    module Image : sig
+      type t = {
+        body : string;
+        info : ImageInfo.t option;
+        url : string option;
+        file : EncryptedFile.t option;
+        msgtype : string;
+      }
+      val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+    end
+
+    module File : sig
+      type info = {
+        mimetype : string option;
+        size : int option;
+        thumbnail_url : string option;
+        thumbnail_file : EncryptedFile.t option;
+        thumbnail_info : ThumbnailInfo.t option;
+      }
+      type t = {
+        body : string;
+        filename : string option;
+        info : info option;
+        url : string option;
+        file : EncryptedFile.t option;
+        msgtype : string;
+      }
+
+      val info_of_yojson :
+        Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
+      val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+    end
+
+    module Audio : sig
+      type info = {
+        duration : int option;
+        mimetype : string option;
+        size : int option;
+      }
+      type t = {
+        body : string;
+        info : info option;
+        url : string option;
+        file : EncryptedFile.t option;
+        msgtype : string;
+      }
+
+      val info_of_yojson :
+        Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
+      val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+    end
+
+    module Location : sig
+      type info = {
+        thumbnail_url : string option;
+        thumbnail_file : EncryptedFile.t option;
+        thumbnail_info : ThumbnailInfo.t option;
+      }
+      type t = {
+        body : string;
+        geo_uri : string;
+        info : info option;
+        msgtype : string;
+      }
+
+      val info_of_yojson :
+        Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
+      val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+    end
+
+    module Video : sig
+      type info = {
+        duration : int option;
+        h : int option;
+        w : int option;
+        mimetype : string option;
+        size : int option;
+        thumbnail_url : string option;
+        thumbnail_file : EncryptedFile.t option;
+        thumbnail_info : ThumbnailInfo.t option;
+      }
+      type t = {
+        body : string;
+        info : info option;
+        url : string option;
+        file : EncryptedFile.t option;
+        msgtype : string;
+      }
+      val info_of_yojson :
+        Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
+      val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+    end
+
+    type t =
+      | Text of Text.t
+      | Emote of Emote.t
+      | Notice of Notice.t
+      | Image of Image.t
+      | File of File.t
+      | Audio of Audio.t
+      | Location of Location.t
+      | Video of Video.t
+      | Unknown of Yojson.Safe.t
+    val to_mtype  : t -> string
+    val text      : Text.t -> t
+    val emote     : Emote.t -> t
+    val notice    : Notice.t -> t
+    val image     : Image.t -> t
+    val file      : File.t -> t
+    val audio     : Audio.t -> t
+    val location  : Location.t -> t
+    val video     : Video.t -> t
+    val unknown   : Yojson.Safe.t -> t
+    val of_yojson : Yojson.Safe.t -> (t, string) Result.t
+  end
+
+  module Create : sig
+    type previous_room = {
+      room_id : string;
+      event_id : string;
+    }
+    type t = {
+      creator : string;
+      federate : bool option;
+      room_version : string option;
+      predecessor : previous_room option;
+    }
+
+    val previous_room_of_yojson :
+      Yojson.Safe.t -> previous_room Ppx_deriving_yojson_runtime.error_or
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module GuestAccess : sig
+    type access = CanJoin | Forbidden
+    type t = { guest_access : access }
+    val access_of_yojson : Yojson.Safe.t -> (access, String.t) Result.t
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module JoinRules : sig
+    type t = { join_rule : string }
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module HistoryVisibility : sig
+    type visibility = Invited | Joined | Shared | WorldReadable
+    val visibility_of_yojson : Yojson.Safe.t -> (visibility, String.t) Result.t
+    type t = { history_visibility : visibility option; }
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module Member : sig
+    type membership = Invite | Join | Knock | Leave | Ban
+    type signatures = string string_map string_map
+    type signed = { mxid       : string
+                  ; signatures : signatures
+                  ; token      : string
+                  }
+    type invite = { display_name : string; signed : signed; }
+    type t = { avatar_url         : string option
+             ; displayname        : string option
+             ; inviter            : string option
+             ; membership         : membership
+             ; is_direct          : bool option
+             ; third_party_invite : invite option
+             ; invite_room_state  : Room.t list option
+             }
+    val membership_of_yojson : Yojson.Safe.t -> (membership, String.t) Result.t
+    val signatures_of_yojson :
+      Yojson.Safe.t -> (string string_map string_map, string) Result.t
+    val signed_of_yojson :
+      Yojson.Safe.t -> signed Ppx_deriving_yojson_runtime.error_or
+    val invite_of_yojson :
+      Yojson.Safe.t -> invite Ppx_deriving_yojson_runtime.error_or
+    val of_yojson :
+      Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module CanonicalAlias : sig
+    type t = {
+      alias : string option;
+      alt_aliases : string list option;
+    }
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module Name : sig
+    type t = { name : string; }
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module Topic : sig
+    type t = { topic : string; }
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module Avatar : sig
+    type t = { info : ImageInfo.t option; url : string; }
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module PowerLevels : sig
+    type notifications = { room : int option; }
+    type int_string_map = int string_map
+    type t = {
+      ban : int option;
+      events : int_string_map option;
+      events_default : int option;
+      invite : int option;
+      kick : int option;
+      redact : int option;
+      state_default : int option;
+      users : int_string_map option;
+      users_default : int option;
+      notifications : notifications option;
+    }
+    val notifications_of_yojson :
+      Yojson.Safe.t -> notifications Ppx_deriving_yojson_runtime.error_or
+    val int_string_map_of_yojson :
+      Yojson.Safe.t -> (int string_map, string) Result.t
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module PinnedEvents : sig
+    type t = { pinned : string list; }
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module Encryption : sig
+    type t = {
+      algorithm : string;
+      rotation_period_ms : int option;
+      rotation_period_msgs : int option;
+    }
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module Redaction : sig
+    type t = { reason : string option; }
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module Encrypted : sig
+    type ciphertext_info = { body : string option
+                           ; olm_type : int option
+                           }
+    type cipher_map = ciphertext_info string_map
+    type ciphertext = Cipher of string | CipherMap of cipher_map
+    type t = { algorithm  : string
+             ; ciphertext : ciphertext
+             ; sender_key : string
+             ; device_id  : string option
+             ; session_id : string option
+             }
+    val ciphertext_info_of_yojson : Yojson.Safe.t -> (ciphertext_info, 'a) Result.t
+    val cipher_map_of_yojson :
+      Yojson.Safe.t -> (ciphertext_info string_map, string) Result.t
+    val ciphertext_of_yojson : Yojson.Safe.t -> (ciphertext, string) Result.t
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module Tombstone : sig
+    type t = { body : string; replacement_room : string; }
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module Sticker : sig
+    type t = { body : string
+             ; info : ImageInfo.t
+             ; url : string
+             }
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module Widgets : sig
+    type data = { widgetSessionId : string; }
+    type t = { name   : string
+             ; m_type : string
+             ; url    : string
+             ; data   : data
+             }
+    val data_of_yojson : Yojson.Safe.t -> data Ppx_deriving_yojson_runtime.error_or
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module PreviewUrls : sig
+    type t = { disable : bool; }
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  module Content : sig
+    type t =
+      | Message of Message.t
+      | Create of Create.t
+      | GuestAccess of GuestAccess.t
+      | JoinRules of JoinRules.t
+      | HistoryVisibility of HistoryVisibility.t
+      | Member of Member.t
+      | CanonicalAlias of CanonicalAlias.t
+      | Name of Name.t
+      | Topic of Topic.t
+      | Avatar of Avatar.t
+      | PowerLevels of PowerLevels.t
+      | PinnedEvents of PinnedEvents.t
+      | Encryption of Encryption.t
+      | Redaction of Redaction.t
+      | Encrypted of Encrypted.t
+      | Tombstone of Tombstone.t
+      | Sticker of Sticker.t
+      | Widgets of Widgets.t
+      | PreviewUrls of PreviewUrls.t
+
+    val message            : Message.t -> t
+    val create             : Create.t -> t
+    val guest_access       : GuestAccess.t -> t
+    val join_rules         : JoinRules.t -> t
+    val history_visibility : HistoryVisibility.t -> t
+    val member             : Member.t -> t
+    val canonical_alias    : CanonicalAlias.t -> t
+    val name               : Name.t -> t
+    val topic              : Topic.t -> t
+    val avatar             : Avatar.t -> t
+    val power_levels       : PowerLevels.t -> t
+    val pinned_events      : PinnedEvents.t -> t
+    val encryption         : Encryption.t -> t
+    val redaction          : Redaction.t -> t
+    val encrypted          : Encrypted.t -> t
+    val tombstone          : Tombstone.t -> t
+    val sticker            : Sticker.t -> t
+    val widgets            : Widgets.t -> t
+    val preview_urls       : PreviewUrls.t -> t
+
+    val of_yojson : String.t -> Yojson.Safe.t -> (t, String.t) Result.t
+  end
+
+  type event_content =
+    | Event of { content : Content.t }
+    | State of { content : Content.t; prev_content : Content.t option }
+
+  module Common : sig
+    type unsigned = { age              : int option
+                    ; redacted_because : string option
+                    ; transaction_id   : string option
+                    ; replaces_state   : string option
+                    ; prev_sender      : string option
+                    }
+    type t = { m_type           : string
+             ; event_id         : string
+             ; sender           : string
+             ; origin_server_ts : int
+             ; unsigned         : unsigned option
+             ; room_id          : string option
+             ; state_key        : string option
+             }
+    val unsigned_keys : unit -> (String.t, String.comparator_witness) Set.t
+    val uncommon_keys : unit -> string list
+    val unsigned_of_yojson :
+      Yojson.Safe.t -> unsigned Ppx_deriving_yojson_runtime.error_or
+    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  end
+
+  type t = Common.t * event_content
+
+  val extra_unsigned : Yojson.Safe.t -> Yojson.Safe.t
+  val uncommon_unsigned : Yojson.Safe.t -> Yojson.Safe.t
+  val of_yojson : Yojson.Safe.t -> (Common.t * event_content, String.t) Result.t
+end = struct
   module Message = struct
     module Text = struct
       type in_reply = { event_id : string } [@@deriving of_yojson]
@@ -297,7 +686,7 @@ module Room = struct
              ; membership         : membership
              ; is_direct          : bool option          [@default None]
              ; third_party_invite : invite option        [@default None]
-             ; invite_room_state  : Yojson.Safe.t option [@default None]
+             ; invite_room_state  : Room.t list option   [@default None]
              } [@@deriving of_yojson]
   end
 
@@ -487,20 +876,12 @@ module Room = struct
       | "m.sticker"                    -> Sticker.of_yojson c           >>| sticker
       | "im.vector.modular.widgets"    -> Widgets.of_yojson c           >>| widgets
       | "org.matrix.room.preview_urls" -> PreviewUrls.of_yojson c       >>| preview_urls
-      | m                           -> Result.fail ("Unknown matrix type: " ^ m)
+      | m                              -> Result.fail ("Unknown matrix type: " ^ m)
   end
 
   type event_content =
     | Event of { content : Content.t }
     | State of { content : Content.t; prev_content : Content.t option }
-
-  module StrippedState = struct
-    type t = { content   : Yojson.Safe.t (* Events.Room.t *)
-             ; state_key : string
-             ; m_type    : string [@key "type"]
-             ; sender    : string
-             } [@@deriving of_yojson]
-  end
 
   module Common = struct
     (* NOTE: redacted_because amd transaction_id seem to be common for room/timeline
@@ -512,18 +893,18 @@ module Room = struct
                     ; prev_sender      : string option [@default None]
                     } [@@deriving of_yojson { strict = false }]
 
-    let unsigned_keys = [ "age"
-                        ; "redacted_because"
-                        ; "transaction_id"
-                        ; "replaces_state"
-                        ; "prev_sender"
-                        ; "prev_content" (* NOTE: Undecided on state event impl *)
-                        ] |> Set.of_list (module String)
+    let unsigned_keys () = [ "age"
+                           ; "redacted_because"
+                           ; "transaction_id"
+                           ; "replaces_state"
+                           ; "prev_sender"
+                           ; "prev_content" (* NOTE: Undecided on state event impl *)
+                           ] |> Set.of_list (module String)
 
     (* NOTE: Tracking the keys I know of that aren't in unsigned_keys, if this
      * does not grow much, target these specifically rather than the even
      * hackier approach used in `extra_unsigned` below. *)
-    let uncommon_keys = [ "invite_room_state" ]
+    let uncommon_keys () = [ "invite_room_state" ]
 
     type t = { m_type           : string [@key "type"]
              ; event_id         : string
@@ -543,7 +924,7 @@ module Room = struct
   let extra_unsigned j =
     Yojson.Safe.Util.keys j
     |> Set.of_list (module String)
-    |> (fun s -> Set.diff s Common.unsigned_keys)
+    |> (fun s -> Set.diff s (Common.unsigned_keys ()))
     |> Set.to_list
     |> List.map ~f:(fun k -> [ (k, Yojson.Safe.Util.member k j) ] |> yo_assoc)
     |> List.fold ~init:(`Assoc []) ~f:U.combine
@@ -554,7 +935,7 @@ module Room = struct
    * ones are. Also, consider treating prev_convent like this rather than as a
    * special record field alongside content. *)
   let uncommon_unsigned j =
-    Common.uncommon_keys
+    Common.uncommon_keys ()
     |> List.map ~f:(fun k -> [ (k, Yojson.Safe.Util.member k j) ] |> yo_assoc)
     |> List.fold ~init:(`Assoc []) ~f:U.combine
 
