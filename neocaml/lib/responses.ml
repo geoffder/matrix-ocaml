@@ -1,9 +1,16 @@
 open Base
-open Yojson
 open Neo_infix
 open Yojson_helpers
 
 type 'a string_map = (string, 'a, String.comparator_witness) Map.t
+
+module EventList = struct
+  type t = { events : Events.t list } [@@deriving of_yojson]
+end
+
+module StateList = struct
+  type t = { events : Events.Room.t list } [@@deriving of_yojson]
+end
 
 module JoinedRooms = struct
   (* NOTE: This is just for the response to the joined_rooms API request, not to
@@ -11,19 +18,18 @@ module JoinedRooms = struct
   type t = string list
 
   let of_yojson =
-    Safe.Util.member "joined_rooms"
-    >> Safe.Util.to_list
-    >> List.map ~f:Safe.Util.to_string
+    U.member "joined_rooms"
+    >> typed_list_of_yojson string_of_yojson
 end
 
-module EventList = struct
-  type t = { events : Events.t list } [@@deriving of_yojson]
-end
-
-module StateList = struct
-  (* TODO: Figure out which uses of EventList actually only includes state
-   * events (which are exclusively Room events). Replace those with this type. *)
-  type t = { events : Events.Room.t list } [@@deriving of_yojson]
+module RoomMessages = struct
+  (* NOTE: Call events appear in chunk, should merge the Events.Call module into
+   * Events.Room? Otherwise would have to use Events.t here. *)
+  type t  = { start_token : string [@key "start"]
+            ; end_token   : string [@key "end"]
+            ; chunk       : Events.t list
+            ; state       : Events.Room.t list option [@default None]
+            } [@@deriving of_yojson]
 end
 
 module RoomMember = struct
@@ -45,7 +51,7 @@ module Sync = struct
   module Timeline = struct
     (* NOTE: Try using Events.Room.t but might need to be Events.t *)
     type t = { events     : Events.Room.t list option [@default None]
-             ; limited    : bool option          [@default None]
+             ; limited    : bool option               [@default None]
              ; prev_batch : string
              } [@@deriving of_yojson]
   end
@@ -123,10 +129,9 @@ module Sync = struct
     let of_yojson = string_map_of_yojson int_of_yojson
   end
 
-  (* NOTE: many of the event types under account_data in the sync response seem
-   * to be element specific? They don't appear in the matrix spec or in the nio
-   * repo. So I guess you can store arbitrary things in account_data on the
-   * server, such as encryption keys? TODO: Research. *)
+  (* NOTE: Arbitrary custom events created by other clients can be included in
+   * account_data, so many Unknown events are expected. Those that seem useful
+   * may be worth incorporating as this client is built out. *)
   type t =
     { next_batch                 : string
     ; rooms                      : Rooms.t option            [@default None]
