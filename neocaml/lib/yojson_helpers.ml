@@ -13,10 +13,6 @@ let yo_list l   : Yojson.Safe.t = `List l
 let json_of_option con opt : Yojson.Safe.t =
   Option.value_map ~f:con ~default:`Null opt
 
-(* TODO: Change this to use Result return safe_to functions instead of exn
- * throwing ones (make my own set of basics. This will allow me to use Result
- * monad versions from ppx_deriving_yojson rather than having to generate exn
- * ones as well) *)
 let assoc_of_yojson j =
   try U.to_assoc j |> Result.return
   with _ -> Result.fail "Input yojson is not an `Assoc."
@@ -49,8 +45,16 @@ let alist_of_yojson of_yojson j =
   let pair_of_yojson (k, yo_v) = of_yojson yo_v >>| fun v -> k, v in
   assoc_of_yojson j >>= (List.map ~f:pair_of_yojson >> Result.all)
 
-let string_map_of_yojson of_yojson j =
-  let open Result in
-  alist_of_yojson of_yojson j >>= fun l ->
-  try Map.of_alist_exn (module String) l |> Result.return
-  with _ -> Result.fail "Invalid 'a string_map."
+module StringMap = struct
+  type 'a t = (string, 'a, String.comparator_witness) Map.t
+
+  let of_yojson a_of_yojson j =
+    let open Result in
+    alist_of_yojson a_of_yojson j >>= fun l ->
+    try Map.of_alist_exn (module String) l |> Result.return
+    with _ -> Result.fail "Invalid 'a string_map."
+
+  let to_yojson a_to_yojson a =
+    let yo_pair (k, v) = k, a_to_yojson v in
+    Map.to_alist a |> List.map ~f:yo_pair |> yo_assoc
+end

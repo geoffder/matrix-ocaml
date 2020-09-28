@@ -2,8 +2,6 @@ open Base
 open Neo_infix
 open Yojson_helpers
 
-type 'a string_map = (string, 'a, String.comparator_witness) Map.t
-
 module EventList = struct
   type t = { events : Events.t list } [@@deriving of_yojson]
 end
@@ -83,18 +81,18 @@ module Sync = struct
       ; msc2654_unread_count : int option [@key "org.matrix.msc2654.unread_count"] [@default None]
       } [@@deriving of_yojson { strict = false }]
 
-    type t = info string_map
+    type t = info StringMap.t
 
-    let of_yojson = string_map_of_yojson info_of_yojson
+    let of_yojson = StringMap.of_yojson info_of_yojson
   end
 
   module InvitedRooms = struct
     type info = { invite_state : EventList.t option [@default None] }
     [@@deriving of_yojson]
 
-    type t = info string_map
+    type t = info StringMap.t
 
-    let of_yojson = string_map_of_yojson info_of_yojson
+    let of_yojson = StringMap.of_yojson info_of_yojson
   end
 
   module LeftRooms = struct
@@ -103,9 +101,9 @@ module Sync = struct
                 ; account_data : EventList.t option [@default None]
                 } [@@deriving of_yojson]
 
-    type t = info string_map
+    type t = info StringMap.t
 
-    let of_yojson = string_map_of_yojson info_of_yojson
+    let of_yojson = StringMap.of_yojson info_of_yojson
   end
 
   module Rooms = struct
@@ -124,9 +122,9 @@ module Sync = struct
 
   module OneTimeKeysCount = struct
     (* NOTE: E2E encryption related *)
-    type t = int string_map
+    type t = int StringMap.t
 
-    let of_yojson = string_map_of_yojson int_of_yojson
+    let of_yojson = StringMap.of_yojson int_of_yojson
   end
 
   (* NOTE: Arbitrary custom events created by other clients can be included in

@@ -2,7 +2,13 @@ open Base
 (* open Neo_infix *)
 open Yojson_helpers
 
-type 'a string_map = (string, 'a, String.comparator_witness) Map.t
+(* TODO: At the least, I'll need to switch the Room.Message types to to deriving
+ *  yojson, so that they implement to_yojson as well. Now that I am looking at
+ * implementing the Client calls to more of the API, I'll need to make additions
+ *  / improvements to the corresponding Events as needed.
+ *
+ * Fortunately, I think to_yojson is only needed for content types, since a lot
+ * of the other fields are server assigned. *)
 
 module JsonWebKey = struct
   type t = { kty     : string
@@ -222,7 +228,7 @@ module rec Room : sig
 
   module Member : sig
     type membership = Invite | Join | Knock | Leave | Ban
-    type signatures = string string_map string_map
+    type signatures = string StringMap.t StringMap.t
     type signed = { mxid       : string
                   ; signatures : signatures
                   ; token      : string
@@ -238,7 +244,7 @@ module rec Room : sig
              }
     val membership_of_yojson : Yojson.Safe.t -> (membership, String.t) Result.t
     val signatures_of_yojson :
-      Yojson.Safe.t -> (string string_map string_map, string) Result.t
+      Yojson.Safe.t -> (string StringMap.t StringMap.t, string) Result.t
     val signed_of_yojson :
       Yojson.Safe.t -> signed Ppx_deriving_yojson_runtime.error_or
     val invite_of_yojson :
@@ -271,7 +277,7 @@ module rec Room : sig
 
   module PowerLevels : sig
     type notifications = { room : int option; }
-    type int_string_map = int string_map
+    type int_string_map = int StringMap.t
     type t = { ban            : int option
              ; events         : int_string_map option
              ; events_default : int option
@@ -286,7 +292,7 @@ module rec Room : sig
     val notifications_of_yojson :
       Yojson.Safe.t -> notifications Ppx_deriving_yojson_runtime.error_or
     val int_string_map_of_yojson :
-      Yojson.Safe.t -> (int string_map, string) Result.t
+      Yojson.Safe.t -> (int StringMap.t, string) Result.t
     val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
   end
 
@@ -313,7 +319,7 @@ module rec Room : sig
     type ciphertext_info = { body : string option
                            ; olm_type : int option
                            }
-    type cipher_map = ciphertext_info string_map
+    type cipher_map = ciphertext_info StringMap.t
     type ciphertext = Cipher of string | CipherMap of cipher_map
     type t = { algorithm  : string
              ; ciphertext : ciphertext
@@ -323,7 +329,7 @@ module rec Room : sig
              }
     val ciphertext_info_of_yojson : Yojson.Safe.t -> (ciphertext_info, 'a) Result.t
     val cipher_map_of_yojson :
-      Yojson.Safe.t -> (ciphertext_info string_map, string) Result.t
+      Yojson.Safe.t -> (ciphertext_info StringMap.t, string) Result.t
     val ciphertext_of_yojson : Yojson.Safe.t -> (ciphertext, string) Result.t
     val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
   end
@@ -648,10 +654,10 @@ end = struct
 
     (* TODO: Need to read more into this... This is the basic structure though.
      * See: https://matrix.org/docs/spec/appendices#signing-json *)
-    type signatures = (string string_map) string_map
+    type signatures = (string StringMap.t) StringMap.t
 
     let signatures_of_yojson =
-      string_map_of_yojson (string_map_of_yojson string_of_yojson)
+      StringMap.of_yojson (StringMap.of_yojson string_of_yojson)
 
     type signed = { mxid       : string
                   ; signatures : signatures
@@ -697,9 +703,9 @@ end = struct
     type notifications =
       { room : int option [@default None] } [@@deriving of_yojson]
 
-    type int_string_map = int string_map
+    type int_string_map = int StringMap.t
 
-    let int_string_map_of_yojson = string_map_of_yojson int_of_yojson
+    let int_string_map_of_yojson = StringMap.of_yojson int_of_yojson
 
     type t = { ban            : int option            [@default None]
              ; events         : int_string_map option [@default None]
@@ -742,9 +748,9 @@ end = struct
       let olm_type = U.member "type" j |> U.to_int_option in
       Result.return { body; olm_type }
 
-    type cipher_map = ciphertext_info string_map
+    type cipher_map = ciphertext_info StringMap.t
 
-    let cipher_map_of_yojson = string_map_of_yojson ciphertext_info_of_yojson
+    let cipher_map_of_yojson = StringMap.of_yojson ciphertext_info_of_yojson
 
     type ciphertext =
       | Cipher of string
@@ -1078,17 +1084,17 @@ module Receipt = struct
   (* NOTE: Ephemeral event. *)
   type receipt = { ts : int option [@default None] } [@@deriving of_yojson]
 
-  type users = receipt string_map
+  type users = receipt StringMap.t
 
-  let users_of_yojson = string_map_of_yojson receipt_of_yojson
+  let users_of_yojson = StringMap.of_yojson receipt_of_yojson
 
   type receipts =
     { read : users option [@key "m.read"] [@default None] } [@@deriving of_yojson]
 
   (* map from event_id to map from user_id to timestamp *)
-  type content = receipts string_map
+  type content = receipts StringMap.t
 
-  let content_of_yojson = string_map_of_yojson receipts_of_yojson
+  let content_of_yojson = StringMap.of_yojson receipts_of_yojson
 
   type t = { m_type  : string [@key "type"]
            ; room_id : string option [@default None]
@@ -1116,10 +1122,10 @@ end
 module Direct = struct
   (* map from user_id to list of room_ids indicating what rooms are considered
    * "direct" rooms for that user. *)
-  type content = (string list) string_map
+  type content = (string list) StringMap.t
 
   let content_of_yojson =
-    string_map_of_yojson (typed_list_of_yojson string_of_yojson)
+    StringMap.of_yojson (typed_list_of_yojson string_of_yojson)
 
   type t = { m_type  : string [@key "type"]
            ; content : content
@@ -1128,9 +1134,9 @@ end
 
 module IgnoredUserList = struct
   (* NOTE: The yojson object is empty at this time according to spec. *)
-  type ignored_users = Yojson.Safe.t string_map
+  type ignored_users = Yojson.Safe.t StringMap.t
 
-  let ignored_users_of_yojson = string_map_of_yojson (fun j -> Result.return j)
+  let ignored_users_of_yojson = StringMap.of_yojson (fun j -> Result.return j)
 
   type content = { ignored_users : ignored_users } [@@deriving of_yojson]
 
@@ -1147,9 +1153,9 @@ module Tag = struct
    * this event to pop up. *)
   type tag = { order : float option [@default None] } [@@deriving of_yojson]
 
-  type tag_map = tag string_map
+  type tag_map = tag StringMap.t
 
-  let tag_map_of_yojson = string_map_of_yojson tag_of_yojson
+  let tag_map_of_yojson = StringMap.of_yojson tag_of_yojson
 
   type content = { tags : tag_map } [@@deriving of_yojson]
 
@@ -1211,9 +1217,9 @@ module PushRules = struct
                  ; underride : push_rule list option [@default None]
                  } [@@deriving of_yojson]
 
-  type devices = ruleset string_map
+  type devices = ruleset StringMap.t
 
-  let devices_of_yojson = string_map_of_yojson ruleset_of_yojson
+  let devices_of_yojson = StringMap.of_yojson ruleset_of_yojson
 
   (* NOTE: device is probably a map, it's empty in the example I have. *)
   type content = { global : ruleset
@@ -1346,9 +1352,9 @@ module KeyVerification = struct
   end
 
   module Mac = struct
-    type mac = string string_map
+    type mac = string StringMap.t
 
-    let mac_of_yojson = string_map_of_yojson string_of_yojson
+    let mac_of_yojson = StringMap.of_yojson string_of_yojson
 
     type t = { transaction_id : string
              ; mac            : mac
