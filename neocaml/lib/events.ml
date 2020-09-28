@@ -16,31 +16,34 @@ module JsonWebKey = struct
            ; alg     : string
            ; k       : string
            ; ext     : bool
-           } [@@deriving of_yojson]
+           } [@@deriving yojson]
 end
 
 module EncryptedFile = struct
-  type hashes_map = string string_map
+  type hashes_map = string StringMap.t
 
-  let hashes_map_of_yojson = string_map_of_yojson string_of_yojson
+  let hashes_map_of_yojson = StringMap.of_yojson string_of_yojson
+  let hashes_map_to_yojson = StringMap.to_yojson yo_string
 
   type t = { url    : string
            ; key    : JsonWebKey.t
            ; iv     : string
            ; hashes : hashes_map
            ; v      : string  (* must be = "v2" *)
-           } [@@deriving of_yojson]
+           } [@@deriving yojson]
 end
 
 module ThumbnailInfo = struct
+  let ( = ) = Stdlib.( = ) (* HACK: see note in Room. *)
   type t = { h        : int option    [@default None]
            ; w        : int option    [@default None]
            ; mimetype : string option [@default None]
            ; size     : int option    [@default None]
-           } [@@deriving of_yojson]
+           } [@@deriving yojson]
 end
 
 module ImageInfo = struct
+  let ( = ) = Stdlib.( = ) (* HACK: see note in Room. *)
   type t = { h              : int option             [@default None]
            ; w              : int option             [@default None]
            ; mimetype       : string option          [@default None]
@@ -48,7 +51,7 @@ module ImageInfo = struct
            ; thumbnail_info : ThumbnailInfo.t option [@default None]
            ; thumbnail_url  : string option          [@default None]
            ; thumbnail_file : EncryptedFile.t option [@default None]
-           } [@@deriving of_yojson]
+           } [@@deriving yojson]
 end
 
 module rec Room : sig
@@ -67,6 +70,7 @@ module rec Room : sig
       val relates_of_yojson :
         Yojson.Safe.t -> relates Ppx_deriving_yojson_runtime.error_or
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+      val to_yojson : t -> Yojson.Safe.t
     end
 
     module Emote : sig
@@ -76,6 +80,7 @@ module rec Room : sig
                ; msgtype        : string
                }
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+      val to_yojson : t -> Yojson.Safe.t
     end
 
     module Notice : sig
@@ -85,6 +90,7 @@ module rec Room : sig
                ; msgtype        : string
                }
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+      val to_yojson : t -> Yojson.Safe.t
     end
 
     module Image : sig
@@ -95,6 +101,7 @@ module rec Room : sig
                ; msgtype : string
                }
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+      val to_yojson : t -> Yojson.Safe.t
     end
 
     module File : sig
@@ -114,6 +121,7 @@ module rec Room : sig
       val info_of_yojson :
         Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+      val to_yojson : t -> Yojson.Safe.t
     end
 
     module Audio : sig
@@ -131,6 +139,7 @@ module rec Room : sig
       val info_of_yojson :
         Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+      val to_yojson : t -> Yojson.Safe.t
     end
 
     module Location : sig
@@ -146,6 +155,7 @@ module rec Room : sig
       val info_of_yojson :
         Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+      val to_yojson : t -> Yojson.Safe.t
     end
 
     module Video : sig
@@ -167,6 +177,7 @@ module rec Room : sig
       val info_of_yojson :
         Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
       val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+      val to_yojson : t -> Yojson.Safe.t
     end
 
     type t =
@@ -180,7 +191,6 @@ module rec Room : sig
       | Video of Video.t
       | Unknown of Yojson.Safe.t
 
-    val to_mtype  : t -> string
     val text      : Text.t -> t
     val emote     : Emote.t -> t
     val notice    : Notice.t -> t
@@ -191,6 +201,7 @@ module rec Room : sig
     val video     : Video.t -> t
     val unknown   : Yojson.Safe.t -> t
     val of_yojson : Yojson.Safe.t -> (t, string) Result.t
+    val to_yojson : t -> Yojson.Safe.t
   end
 
   module Create : sig
@@ -440,13 +451,19 @@ module rec Room : sig
   val uncommon_unsigned : Yojson.Safe.t -> Yojson.Safe.t
   val of_yojson : Yojson.Safe.t -> (Common.t * event_content, String.t) Result.t
 end = struct
+  (* HACK: This enables use of to_yojson with optional default values. From what
+   * I understand, this might be fixed in the next release of
+   * ppx_deriving_yojson, try removing when the changes hit opam. Link to
+   * relevant issue: __ *)
+  let ( = ) = Stdlib.( = )
+
   module Message = struct
     module Text = struct
-      type in_reply = { event_id : string } [@@deriving of_yojson]
+      type in_reply = { event_id : string } [@@deriving yojson]
 
       type relates =
         { in_reply_to : in_reply option [@key "m.in_reply_to"] [@default None]
-        } [@@deriving of_yojson]
+        } [@@deriving yojson]
 
       type t =
         { body           : string
@@ -454,7 +471,7 @@ end = struct
         ; formatted_body : string option [@default None]
         ; msgtype        : string
         ; relates_to     : relates option [@key "m.relates_to"] [@default None]
-        } [@@deriving of_yojson]
+        } [@@deriving yojson]
     end
 
     module Emote = struct
@@ -462,7 +479,7 @@ end = struct
                ; format         : string option [@default None]
                ; formatted_body : string option [@default None]
                ; msgtype        : string
-               } [@@deriving of_yojson]
+               } [@@deriving yojson]
     end
 
     module Notice = struct
@@ -470,7 +487,7 @@ end = struct
                ; format         : string option [@default None]
                ; formatted_body : string option [@default None]
                ; msgtype        : string
-               } [@@deriving of_yojson]
+               } [@@deriving yojson]
     end
 
     module Image = struct
@@ -480,16 +497,16 @@ end = struct
                ; url     : string option          [@default None]
                ; file    : EncryptedFile.t option [@default None]
                ; msgtype : string
-               } [@@deriving of_yojson]
+               } [@@deriving yojson]
     end
 
     module File = struct
-      type info = { mimetype : string option                [@default None]
-                  ; size     : int option                   [@default None]
-                  ; thumbnail_url : string option           [@default None]
+      type info = { mimetype       : string option          [@default None]
+                  ; size           : int option             [@default None]
+                  ; thumbnail_url  : string option          [@default None]
                   ; thumbnail_file : EncryptedFile.t option [@default None]
                   ; thumbnail_info : ThumbnailInfo.t option [@default None]
-                  } [@@deriving of_yojson]
+                  } [@@deriving yojson]
 
       type t = { body     : string
                ; filename : string option          [@default None]
@@ -497,34 +514,34 @@ end = struct
                ; url      : string option          [@default None]
                ; file     : EncryptedFile.t option [@default None]
                ; msgtype  : string
-               } [@@deriving of_yojson]
+               } [@@deriving yojson]
     end
 
     module Audio = struct
       type info = { duration : int option    [@default None]
                   ; mimetype : string option [@default None]
                   ; size     : int option    [@default None]
-                  } [@@deriving of_yojson]
+                  } [@@deriving yojson]
 
-      type t = { body     : string
-               ; info     : info option            [@default None]
-               ; url      : string option          [@default None]
-               ; file     : EncryptedFile.t option [@default None]
-               ; msgtype  : string
-               } [@@deriving of_yojson]
+      type t = { body    : string
+               ; info    : info option            [@default None]
+               ; url     : string option          [@default None]
+               ; file    : EncryptedFile.t option [@default None]
+               ; msgtype : string
+               } [@@deriving yojson]
     end
 
     module Location = struct
       type info = { thumbnail_url  : string option          [@default None]
                   ; thumbnail_file : EncryptedFile.t option [@default None]
                   ; thumbnail_info : ThumbnailInfo.t option [@default None]
-                  } [@@deriving of_yojson]
+                  } [@@deriving yojson]
 
-      type t = { body     : string
-               ; geo_uri  : string
-               ; info     : info option [@default None]
-               ; msgtype  : string
-               } [@@deriving of_yojson]
+      type t = { body    : string
+               ; geo_uri : string
+               ; info    : info option [@default None]
+               ; msgtype : string
+               } [@@deriving yojson]
     end
 
     module Video = struct
@@ -536,7 +553,7 @@ end = struct
                   ; thumbnail_url  : string option          [@default None]
                   ; thumbnail_file : EncryptedFile.t option [@default None]
                   ; thumbnail_info : ThumbnailInfo.t option [@default None]
-                  } [@@deriving of_yojson]
+                  } [@@deriving yojson]
 
       (* NOTE: url or file is required depending on encryption. *)
       type t = { body    : string
@@ -544,7 +561,7 @@ end = struct
                ; url     : string option          [@default None]
                ; file    : EncryptedFile.t option [@default None]
                ; msgtype : string
-               } [@@deriving of_yojson]
+               } [@@deriving yojson]
     end
 
     type t =
@@ -557,17 +574,6 @@ end = struct
       | Location of Location.t
       | Video of Video.t
       | Unknown of Yojson.Safe.t
-
-    let to_mtype = function
-      | Text     _ -> "m.text"
-      | Emote    _ -> "m.emote"
-      | Notice   _ -> "m.notice"
-      | Image    _ -> "m.image"
-      | File     _ -> "m.file"
-      | Audio    _ -> "m.audio"
-      | Location _ -> "m.location"
-      | Video    _ -> "m.video"
-      | Unknown  _ -> "unknown message type"
 
     let text m     = Text m
     let emote m    = Emote m
@@ -595,6 +601,17 @@ end = struct
         | _            -> Result.return content      |> Result.map ~f:unknown
       end
       |> Option.value ~default:(Result.fail "Missing msgtype.")
+
+    let to_yojson = function
+      | Text     c -> Text.to_yojson c
+      | Emote    c -> Emote.to_yojson c
+      | Notice   c -> Notice.to_yojson c
+      | Image    c -> Image.to_yojson c
+      | File     c -> File.to_yojson c
+      | Audio    c -> Audio.to_yojson c
+      | Location c -> Location.to_yojson c
+      | Video    c -> Video.to_yojson c
+      | Unknown  j -> j
   end
 
   module Create = struct
