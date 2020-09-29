@@ -3,7 +3,8 @@ open Base
 open Yojson_helpers
 
 (* TODO: I think I can trim a lot of the val definitions in the Room sig. Only
- * to_ and of_yojson for each type will ever actually be used. *)
+ * to_ and of_yojson for each type will ever actually be used. Commented them
+ * out, go through and delete if everything seems fine. *)
 
 module JsonWebKey = struct
   type t = { kty     : string
@@ -60,10 +61,10 @@ module rec Room : sig
                ; msgtype        : string
                ; relates_to     : relates option
                }
-      val in_reply_of_yojson :
-        Yojson.Safe.t -> in_reply Ppx_deriving_yojson_runtime.error_or
-      val relates_of_yojson :
-        Yojson.Safe.t -> relates Ppx_deriving_yojson_runtime.error_or
+      (* val in_reply_of_yojson :
+       *   Yojson.Safe.t -> in_reply Ppx_deriving_yojson_runtime.error_or
+       * val relates_of_yojson :
+       *   Yojson.Safe.t -> relates Ppx_deriving_yojson_runtime.error_or *)
       include DerivingYojson with type t := t
     end
 
@@ -109,8 +110,8 @@ module rec Room : sig
                ; file     : EncryptedFile.t option
                ; msgtype  : string
                }
-      val info_of_yojson :
-        Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
+      (* val info_of_yojson :
+       *   Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or *)
       include DerivingYojson with type t := t
     end
 
@@ -125,8 +126,8 @@ module rec Room : sig
                ; file    : EncryptedFile.t option
                ; msgtype : string
                }
-      val info_of_yojson :
-        Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
+      (* val info_of_yojson :
+       *   Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or *)
       include DerivingYojson with type t := t
     end
 
@@ -140,8 +141,8 @@ module rec Room : sig
                ; info    : info option
                ; msgtype : string
                }
-      val info_of_yojson :
-        Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
+      (* val info_of_yojson :
+       *   Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or *)
       include DerivingYojson with type t := t
     end
 
@@ -161,8 +162,8 @@ module rec Room : sig
                ; file    : EncryptedFile.t option
                ; msgtype : string
                }
-      val info_of_yojson :
-        Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or
+      (* val info_of_yojson :
+       *   Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or *)
       include DerivingYojson with type t := t
     end
 
@@ -199,15 +200,15 @@ module rec Room : sig
              ; room_version : string option
              ; predecessor  : previous_room option
              }
-    val previous_room_of_yojson :
-      Yojson.Safe.t -> previous_room Ppx_deriving_yojson_runtime.error_or
+    (* val previous_room_of_yojson :
+     *   Yojson.Safe.t -> previous_room Ppx_deriving_yojson_runtime.error_or *)
     include DerivingYojson with type t := t
   end
 
   module GuestAccess : sig
     type access = CanJoin | Forbidden
     type t = { guest_access : access }
-    val access_of_yojson : Yojson.Safe.t -> (access, String.t) Result.t
+    (* val access_of_yojson : Yojson.Safe.t -> (access, String.t) Result.t *)
     include DerivingYojson with type t := t
   end
 
@@ -218,9 +219,8 @@ module rec Room : sig
 
   module HistoryVisibility : sig
     type visibility = Invited | Joined | Shared | WorldReadable
-    val visibility_of_yojson : Yojson.Safe.t -> (visibility, String.t) Result.t
+    (* val visibility_of_yojson : Yojson.Safe.t -> (visibility, String.t) Result.t *)
     type t = { history_visibility : visibility option; }
-    (* val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or *)
     include DerivingYojson with type t := t
   end
 
@@ -238,16 +238,16 @@ module rec Room : sig
              ; membership         : membership
              ; is_direct          : bool option
              ; third_party_invite : invite option
-             (* ; invite_room_state  : Room.t list option *)
-             ; invite_room_state  : Yojson.Safe.t
+             ; invite_room_state  : Room.t list option
+    (* ; invite_room_state  : Yojson.Safe.t *)
              }
-    val membership_of_yojson : Yojson.Safe.t -> (membership, String.t) Result.t
-    val signatures_of_yojson :
-      Yojson.Safe.t -> (string StringMap.t StringMap.t, string) Result.t
-    val signed_of_yojson :
-      Yojson.Safe.t -> signed Ppx_deriving_yojson_runtime.error_or
-    val invite_of_yojson :
-      Yojson.Safe.t -> invite Ppx_deriving_yojson_runtime.error_or
+    (* val membership_of_yojson : Yojson.Safe.t -> (membership, String.t) Result.t
+     * val signatures_of_yojson :
+     *   Yojson.Safe.t -> (string StringMap.t StringMap.t, string) Result.t
+     * val signed_of_yojson :
+     *   Yojson.Safe.t -> signed Ppx_deriving_yojson_runtime.error_or
+     * val invite_of_yojson :
+     *   Yojson.Safe.t -> invite Ppx_deriving_yojson_runtime.error_or *)
     include DerivingYojson with type t := t
   end
 
@@ -287,10 +287,10 @@ module rec Room : sig
              ; users_default  : int option
              ; notifications  : notifications option
              }
-    val notifications_of_yojson :
-      Yojson.Safe.t -> notifications Ppx_deriving_yojson_runtime.error_or
-    val int_string_map_of_yojson :
-      Yojson.Safe.t -> (int StringMap.t, string) Result.t
+    (* val notifications_of_yojson :
+     *   Yojson.Safe.t -> notifications Ppx_deriving_yojson_runtime.error_or
+     * val int_string_map_of_yojson :
+     *   Yojson.Safe.t -> (int StringMap.t, string) Result.t *)
     include DerivingYojson with type t := t
   end
 
@@ -324,11 +324,11 @@ module rec Room : sig
              ; device_id  : string option
              ; session_id : string option
              }
-    val ciphertext_info_of_yojson :
-      Yojson.Safe.t -> ciphertext_info Ppx_deriving_yojson_runtime.error_or
-    val cipher_map_of_yojson :
-      Yojson.Safe.t -> (ciphertext_info StringMap.t, string) Result.t
-    val ciphertext_of_yojson : Yojson.Safe.t -> (ciphertext, string) Result.t
+    (* val ciphertext_info_of_yojson :
+     *   Yojson.Safe.t -> ciphertext_info Ppx_deriving_yojson_runtime.error_or
+     * val cipher_map_of_yojson :
+     *   Yojson.Safe.t -> (ciphertext_info StringMap.t, string) Result.t
+     * val ciphertext_of_yojson : Yojson.Safe.t -> (ciphertext, string) Result.t *)
     include DerivingYojson with type t := t
   end
 
@@ -352,7 +352,7 @@ module rec Room : sig
              ; url    : string
              ; data   : data
              }
-    val data_of_yojson : Yojson.Safe.t -> data Ppx_deriving_yojson_runtime.error_or
+    (* val data_of_yojson : Yojson.Safe.t -> data Ppx_deriving_yojson_runtime.error_or *)
     include DerivingYojson with type t := t
   end
 
@@ -431,8 +431,8 @@ module rec Room : sig
              }
     val unsigned_keys : unit -> (String.t, String.comparator_witness) Set.t
     val uncommon_keys : unit -> string list
-    val unsigned_of_yojson :
-      Yojson.Safe.t -> unsigned Ppx_deriving_yojson_runtime.error_or
+    (* val unsigned_of_yojson :
+     *   Yojson.Safe.t -> unsigned Ppx_deriving_yojson_runtime.error_or *)
     include DerivingYojson with type t := t
   end
 
@@ -697,15 +697,14 @@ end = struct
                   ; signed       : signed
                   } [@@deriving yojson]
 
-    (* FIXME: invite_room_state : stripped_state list *)
     type t = { avatar_url         : string option        [@default None]
              ; displayname        : string option        [@default None]
              ; inviter            : string option        [@default None]
              ; membership         : membership
              ; is_direct          : bool option          [@default None]
              ; third_party_invite : invite option        [@default None]
-             (* ; invite_room_state  : Room.t list option   [@default None] *)
-             ; invite_room_state  : Yojson.Safe.t
+             ; invite_room_state  : Room.t list option   [@default None]
+    (* ; invite_room_state  : Yojson.Safe.t *)
              } [@@deriving yojson]
   end
 
