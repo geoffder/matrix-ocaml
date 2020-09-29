@@ -58,3 +58,9 @@ module StringMap = struct
     let yo_pair (k, v) = k, a_to_yojson v in
     Map.to_alist a |> List.map ~f:yo_pair |> yo_assoc
 end
+
+module type DerivingYojson = sig
+  type t
+  val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
+  val to_yojson : t -> Yojson.Safe.t
+end
