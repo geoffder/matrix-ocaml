@@ -38,10 +38,10 @@ let body_of_json j = j |> Yojson.Safe.to_string |> Cohttp_lwt.Body.of_string
 let json_of_body b = b |> Cohttp_lwt.Body.to_string >|= Yojson.Safe.from_string
 
 (* Continue execution of given function if logged in. *)
-let logged_in client f =
-  match client.access_token with
-  | None -> Lwt.return_error "Not logged in."
-  | Some token -> f token
+let logged_in client =
+  client.access_token
+  |> Option.value_map ~f:Lwt.return_ok
+    ~default:(Lwt.return_error "Not logged in.")
 
 let with_timeout ?timeout ~call uri =
   let times_up =
@@ -118,31 +118,38 @@ let logout ?(all_devices=false) client =
     >>| fun _ -> { client with access_token = None }
 
 let joined_rooms client =
-  logged_in client begin fun token ->
+  logged_in client >=> fun token ->
     Api.joined_rooms token
     |> send client
     >>| Responses.JoinedRooms.of_yojson
-  end
 
 (* NOTE:
- *  Response is a list of room events, the of json is a bit more compicated.
+ * Response is a list of room events, the of json is a bit more compicated.
  * Requires checking "content" -> "msgtype" for each element of the returned
  * list at key "chunk". Keys "end" and "start" contain the since tokens I think.
- *  m.room.message and m.room.name are actually both possible for "type", which
+ * m.room.message and m.room.name are actually both possible for "type", which
  * is at the same level as "content", meaning that not just messages (which have
  * a "msgtype" in their "content" dict) are included. The module for this one
  * must cover a lot of bases. *)
 let room_messages ?stop ?dir ?(limit=10) ?filter client id start =
-  logged_in client begin fun token ->
+  logged_in client >=> fun token ->
     Api.room_messages ?stop ?dir ~limit ?filter token id start
     |> send client
+    (* >>| Yojson.Safe.to_string *)
+    >>| Responses.RoomMessages.of_yojson
+
+let room_send client id event =
+  logged_in client >=> fun token ->
+    let body = Events.Room.Content.to_yojson event in
+    let m_type = Events.Room.Content.to_m_type event in
+    let tx_id = "TODO: unique id string" in
+    Api.room_send token id m_type body tx_id
+    |> send client
     >>| Yojson.Safe.to_string
-  end
 
 let sync ?since ?timeout ?filter ?full_state:(full=false) ?set_presence client =
-  logged_in client begin fun token ->
+  logged_in client >=> fun token ->
     Api.sync ?since ?timeout ?filter ~full_state:full ?set_presence token
     |> send client
     (* >>| Yojson.Safe.to_string *)
     >>| Responses.Sync.of_yojson
-  end
