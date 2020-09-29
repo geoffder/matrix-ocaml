@@ -44,51 +44,42 @@ let login ?device_name ?device_id user cred =
       ] |> yo_assoc in
   (`POST, build_path "login", Some content)
 
-let logout ?all_devices:(all=false) access =
-  begin if all then "logout/all" else "logout" end
+let logout ?(all_devices=false) access =
+  begin if all_devices then "logout/all" else "logout" end
   |> build_path ~queries:(query "access_token" access)
   |> fun pth -> (`POST, pth, Some (yo_assoc []))
 
-let sync ?since ?timeout ?filter ?full_state:(full=false) ?set_presence access =
+let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence access =
   let queries =
     query_of_option "since" since
     @ query_of_option_map ~f:Int.to_string "timeout" timeout
     @ query_of_option_map ~f:Presence.to_string "set_presence" set_presence
     @ query_of_option_map ~f:Yojson.Safe.to_string "filter" filter
     @ [ ("access_token", [ access ])
-      ; ("full_state",   [ Bool.to_string full ])
+      ; ("full_state",   [ Bool.to_string full_state ])
       ] in
   (`GET, build_path ~queries "sync", None)
 
 let room_send access room_id event_type body tx_id =
   let queries = query "access_token" access in
-  (* TODO: Need to check out how events are broken up in nio. In matrix they
-   * are of the form "m.room.message". I need to model them with types and
-   * create the relevant conversion funtions. Also, for each of these events,
-   * should I make records that derive from yojson (for automatic conversion
-   * methods) ? Then I could just pass a room event into this function, which
-   * will give a constructor to generate the matrix string with and also be easy
-   * to convert to a json body. *)
-  (* let event_str = Events.to_string event_type in *)
-  let event_str = event_type in
-  let pth = Printf.sprintf "rooms/%s/send/%s/%s" room_id event_str tx_id in
-  (`PUT, build_path ~queries pth, body)
+  let pth = Printf.sprintf "rooms/%s/send/%s/%s" room_id event_type tx_id in
+  (`PUT, build_path ~queries pth, Some body)
 
 let room_get_event access room_id event_id =
   let queries = query "access_token" access in
   let pth = Printf.sprintf "rooms/%s/event/%s" room_id event_id in
   (`GET, build_path ~queries pth, None)
 
-let room_put_state ?state_key access room_id event_str body =
+let room_put_state ?state_key access room_id event_type body =
   let queries = query "access_token" access in
   let key = Option.value ~default:"" state_key in
-  let pth = Printf.sprintf "rooms/%s/state/%s/%s" room_id event_str key in
+  let pth = Printf.sprintf "rooms/%s/state/%s/%s" room_id event_type key in
   (`PUT, build_path ~queries pth, Some body)
 
-let room_get_state_event ?state_key access room_id event_str =
+let room_get_state_event ?state_key access room_id event_type =
   let queries = query "access_token" access in
   let key = Option.value ~default:"" state_key in
-  let pth = Printf.sprintf "rooms/%s/state/%s/%s" room_id event_str key in
+  let pth = Printf.sprintf "rooms/%s/state/%s/%s" room_id event_type key in
   (`GET, build_path ~queries pth, None)
 
 let room_get_state access room_id =
@@ -234,7 +225,7 @@ let joined_rooms access =
 let room_resolve_alias room_alias =
   (`GET, build_path ("directory/room/" ^ room_alias), None)
 
-let room_typing ?typing:(typing=true) ?timeout access room_id user_id =
+let room_typing ?(typing=true) ?timeout access room_id user_id =
   let queries = query "access_token" access in
   let content = [ ("typing",  Bool.to_string typing |> yo_string)
                 ; ("timeout", Option.value ~default:30000 timeout |> yo_int)
