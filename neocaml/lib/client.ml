@@ -1,4 +1,4 @@
-open Base
+open Core
 
 open Lwt
 open Cohttp
@@ -16,6 +16,7 @@ type t = { homeserver      : string
          ; access_token    : string option
          ; rooms           : (string, Room.t, String.comparator_witness) Map.t
          ; encrypted_rooms : (string, String.comparator_witness) Set.t
+         ; random_state    : Random.State.t
          }
 
 let make ?device_id ?store_path ?access_token homeserver user =
@@ -27,6 +28,7 @@ let make ?device_id ?store_path ?access_token homeserver user =
   ; access_token
   ; rooms           = Map.empty (module String)
   ; encrypted_rooms = Set.empty (module String)
+  ; random_state    = Random.State.make_self_init ()
   }
 
 let complete_uri client pth = client.homeserver ^ pth |> Uri.of_string
@@ -142,10 +144,10 @@ let room_send client id event =
   logged_in client >=> fun token ->
     let body = Events.Room.Content.to_yojson event in
     let m_type = Events.Room.Content.to_m_type event in
-    let tx_id = "TODO: unique id string" in
+    let tx_id = Uuid.create_random client.random_state |> Uuid.to_string in
     Api.room_send token id m_type body tx_id
     |> send client
-    >>| Yojson.Safe.to_string
+    >>| Responses.RoomSend.of_yojson
 
 let sync ?since ?timeout ?filter ?full_state:(full=false) ?set_presence client =
   logged_in client >=> fun token ->
