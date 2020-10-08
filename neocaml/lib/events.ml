@@ -6,51 +6,46 @@ open Yojson_helpers
  * to_ and of_yojson for each type will ever actually be used. Commented them
  * out, go through and delete if everything seems fine. *)
 
-module JsonWebKey = struct
-  type t = { kty     : string
-           ; key_ops : string list
-           ; alg     : string
-           ; k       : string
-           ; ext     : bool
-           } [@@deriving yojson]
-end
-
-module EncryptedFile = struct
-  type hashes_map = string StringMap.t
-
-  let hashes_map_of_yojson = StringMap.of_yojson string_of_yojson
-  let hashes_map_to_yojson = StringMap.to_yojson yo_string
-
-  type t = { url    : string
-           ; key    : JsonWebKey.t
-           ; iv     : string
-           ; hashes : hashes_map
-           ; v      : string  (* must be = "v2" *)
-           } [@@deriving yojson]
-end
-
-module ThumbnailInfo = struct
-  let ( = ) = Stdlib.( = ) (* HACK: see note in Room. *)
-  type t = { h        : int option    [@default None]
-           ; w        : int option    [@default None]
-           ; mimetype : string option [@default None]
-           ; size     : int option    [@default None]
-           } [@@deriving yojson]
-end
-
-module ImageInfo = struct
-  let ( = ) = Stdlib.( = ) (* HACK: see note in Room. *)
-  type t = { h              : int option             [@default None]
-           ; w              : int option             [@default None]
-           ; mimetype       : string option          [@default None]
-           ; size           : int option             [@default None]
-           ; thumbnail_info : ThumbnailInfo.t option [@default None]
-           ; thumbnail_url  : string option          [@default None]
-           ; thumbnail_file : EncryptedFile.t option [@default None]
-           } [@@deriving yojson]
-end
-
 module rec Room : sig
+  module EncryptedFile : sig
+    type json_web_key = { kty     : string
+                        ; key_ops : string list
+                        ; alg     : string
+                        ; k       : string
+                        ; ext     : bool
+                        }
+    type hashes_map = string StringMap.t
+    type t = { url    : string
+             ; key    : json_web_key
+             ; iv     : string
+             ; hashes : hashes_map
+             ; v      : string
+             }
+    include DerivingYojson with type t := t
+  end
+
+  module ThumbnailInfo : sig
+    type t = { h        : int option
+             ; w        : int option
+             ; mimetype : string option
+             ; size     : int option
+             }
+    include DerivingYojson with type t := t
+    val def      : t
+  end
+
+  module ImageInfo : sig
+    type t = { h              : int option
+             ; w              : int option
+             ; mimetype       : string option
+             ; size           : int option
+             ; thumbnail_info : ThumbnailInfo.t option
+             ; thumbnail_url  : string option
+             ; thumbnail_file : EncryptedFile.t option
+             }
+    include DerivingYojson with type t := t
+    val def      : t
+  end
   module Message : sig
     module Text : sig
       type in_reply = { event_id : string; }
@@ -61,11 +56,8 @@ module rec Room : sig
                ; msgtype        : string
                ; relates_to     : relates option
                }
-      (* val in_reply_of_yojson :
-       *   Yojson.Safe.t -> in_reply Ppx_deriving_yojson_runtime.error_or
-       * val relates_of_yojson :
-       *   Yojson.Safe.t -> relates Ppx_deriving_yojson_runtime.error_or *)
       include DerivingYojson with type t := t
+      val def : t
     end
 
     module Emote : sig
@@ -75,6 +67,7 @@ module rec Room : sig
                ; msgtype        : string
                }
       include DerivingYojson with type t := t
+      val def : t
     end
 
     module Notice : sig
@@ -84,6 +77,7 @@ module rec Room : sig
                ; msgtype        : string
                }
       include DerivingYojson with type t := t
+      val def : t
     end
 
     module Image : sig
@@ -94,6 +88,7 @@ module rec Room : sig
                ; msgtype : string
                }
       include DerivingYojson with type t := t
+      val def : t
     end
 
     module File : sig
@@ -113,6 +108,8 @@ module rec Room : sig
       (* val info_of_yojson :
        *   Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or *)
       include DerivingYojson with type t := t
+      val info_def : info
+      val def      : t
     end
 
     module Audio : sig
@@ -126,9 +123,9 @@ module rec Room : sig
                ; file    : EncryptedFile.t option
                ; msgtype : string
                }
-      (* val info_of_yojson :
-       *   Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or *)
       include DerivingYojson with type t := t
+      val info_def : info
+      val def      : t
     end
 
     module Location : sig
@@ -141,9 +138,9 @@ module rec Room : sig
                ; info    : info option
                ; msgtype : string
                }
-      (* val info_of_yojson :
-       *   Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or *)
       include DerivingYojson with type t := t
+      val info_def : info
+      val def      : t
     end
 
     module Video : sig
@@ -162,9 +159,9 @@ module rec Room : sig
                ; file    : EncryptedFile.t option
                ; msgtype : string
                }
-      (* val info_of_yojson :
-       *   Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or *)
       include DerivingYojson with type t := t
+      val info_def : info
+      val def      : t
     end
 
     type t =
@@ -200,15 +197,12 @@ module rec Room : sig
              ; room_version : string option
              ; predecessor  : previous_room option
              }
-    (* val previous_room_of_yojson :
-     *   Yojson.Safe.t -> previous_room Ppx_deriving_yojson_runtime.error_or *)
     include DerivingYojson with type t := t
   end
 
   module GuestAccess : sig
     type access = CanJoin | Forbidden
     type t = { guest_access : access }
-    (* val access_of_yojson : Yojson.Safe.t -> (access, String.t) Result.t *)
     include DerivingYojson with type t := t
   end
 
@@ -219,7 +213,6 @@ module rec Room : sig
 
   module HistoryVisibility : sig
     type visibility = Invited | Joined | Shared | WorldReadable
-    (* val visibility_of_yojson : Yojson.Safe.t -> (visibility, String.t) Result.t *)
     type t = { history_visibility : visibility option; }
     include DerivingYojson with type t := t
   end
@@ -239,15 +232,7 @@ module rec Room : sig
              ; is_direct          : bool option
              ; third_party_invite : invite option
              ; invite_room_state  : Room.t list option
-    (* ; invite_room_state  : Yojson.Safe.t *)
              }
-    (* val membership_of_yojson : Yojson.Safe.t -> (membership, String.t) Result.t
-     * val signatures_of_yojson :
-     *   Yojson.Safe.t -> (string StringMap.t StringMap.t, string) Result.t
-     * val signed_of_yojson :
-     *   Yojson.Safe.t -> signed Ppx_deriving_yojson_runtime.error_or
-     * val invite_of_yojson :
-     *   Yojson.Safe.t -> invite Ppx_deriving_yojson_runtime.error_or *)
     include DerivingYojson with type t := t
   end
 
@@ -287,10 +272,6 @@ module rec Room : sig
              ; users_default  : int option
              ; notifications  : notifications option
              }
-    (* val notifications_of_yojson :
-     *   Yojson.Safe.t -> notifications Ppx_deriving_yojson_runtime.error_or
-     * val int_string_map_of_yojson :
-     *   Yojson.Safe.t -> (int StringMap.t, string) Result.t *)
     include DerivingYojson with type t := t
   end
 
@@ -324,11 +305,6 @@ module rec Room : sig
              ; device_id  : string option
              ; session_id : string option
              }
-    (* val ciphertext_info_of_yojson :
-     *   Yojson.Safe.t -> ciphertext_info Ppx_deriving_yojson_runtime.error_or
-     * val cipher_map_of_yojson :
-     *   Yojson.Safe.t -> (ciphertext_info StringMap.t, string) Result.t
-     * val ciphertext_of_yojson : Yojson.Safe.t -> (ciphertext, string) Result.t *)
     include DerivingYojson with type t := t
   end
 
@@ -352,7 +328,6 @@ module rec Room : sig
              ; url    : string
              ; data   : data
              }
-    (* val data_of_yojson : Yojson.Safe.t -> data Ppx_deriving_yojson_runtime.error_or *)
     include DerivingYojson with type t := t
   end
 
@@ -431,8 +406,6 @@ module rec Room : sig
              }
     val unsigned_keys : unit -> (String.t, String.comparator_witness) Set.t
     val uncommon_keys : unit -> string list
-    (* val unsigned_of_yojson :
-     *   Yojson.Safe.t -> unsigned Ppx_deriving_yojson_runtime.error_or *)
     include DerivingYojson with type t := t
   end
 
@@ -449,6 +422,61 @@ end = struct
    * relevant issue: __ *)
   let ( = ) = Stdlib.( = )
 
+  module EncryptedFile = struct
+    type json_web_key = { kty     : string
+                        ; key_ops : string list
+                        ; alg     : string
+                        ; k       : string
+                        ; ext     : bool
+                        } [@@deriving yojson]
+
+    type hashes_map = string StringMap.t
+
+    let hashes_map_of_yojson = StringMap.of_yojson string_of_yojson
+    let hashes_map_to_yojson = StringMap.to_yojson yo_string
+
+    type t = { url    : string
+             ; key    : json_web_key
+             ; iv     : string
+             ; hashes : hashes_map
+             ; v      : string  (* must be = "v2" *)
+             } [@@deriving yojson]
+  end
+
+  module ThumbnailInfo = struct
+    type t = { h        : int option    [@default None]
+             ; w        : int option    [@default None]
+             ; mimetype : string option [@default None]
+             ; size     : int option    [@default None]
+             } [@@deriving yojson]
+
+    let def = { h        = None
+              ; w        = None
+              ; mimetype = None
+              ; size     = None
+              }
+  end
+
+  module ImageInfo = struct
+    type t = { h              : int option             [@default None]
+             ; w              : int option             [@default None]
+             ; mimetype       : string option          [@default None]
+             ; size           : int option             [@default None]
+             ; thumbnail_info : ThumbnailInfo.t option [@default None]
+             ; thumbnail_url  : string option          [@default None]
+             ; thumbnail_file : EncryptedFile.t option [@default None]
+             } [@@deriving yojson]
+
+    let def = { h              = None
+              ; w              = None
+              ; mimetype       = None
+              ; size           = None
+              ; thumbnail_info = None
+              ; thumbnail_url  = None
+              ; thumbnail_file = None
+              }
+  end
+
   module Message = struct
     module Text = struct
       type in_reply = { event_id : string } [@@deriving yojson]
@@ -464,6 +492,13 @@ end = struct
         ; msgtype        : string
         ; relates_to     : relates option [@key "m.relates_to"] [@default None]
         } [@@deriving yojson]
+
+      let def = { body           = ""
+                ; format         = None
+                ; formatted_body = None
+                ; msgtype        = "m.text"
+                ; relates_to     = None
+                }
     end
 
     module Emote = struct
@@ -472,6 +507,12 @@ end = struct
                ; formatted_body : string option [@default None]
                ; msgtype        : string
                } [@@deriving yojson]
+
+      let def = { body           = ""
+                ; format         = None
+                ; formatted_body = None
+                ; msgtype        = "m.emote"
+                }
     end
 
     module Notice = struct
@@ -480,6 +521,12 @@ end = struct
                ; formatted_body : string option [@default None]
                ; msgtype        : string
                } [@@deriving yojson]
+
+      let def = { body           = ""
+                ; format         = None
+                ; formatted_body = None
+                ; msgtype        = "m.notice"
+                }
     end
 
     module Image = struct
@@ -490,6 +537,13 @@ end = struct
                ; file    : EncryptedFile.t option [@default None]
                ; msgtype : string
                } [@@deriving yojson]
+
+      let def = { body    = ""
+                ; info    = None
+                ; url     = None
+                ; file    = None
+                ; msgtype = "m.image"
+                }
     end
 
     module File = struct
@@ -500,6 +554,13 @@ end = struct
                   ; thumbnail_info : ThumbnailInfo.t option [@default None]
                   } [@@deriving yojson]
 
+      let info_def = { mimetype       = None
+                     ; size           = None
+                     ; thumbnail_url  = None
+                     ; thumbnail_file = None
+                     ; thumbnail_info = None
+                     }
+
       type t = { body     : string
                ; filename : string option          [@default None]
                ; info     : info option            [@default None]
@@ -507,6 +568,14 @@ end = struct
                ; file     : EncryptedFile.t option [@default None]
                ; msgtype  : string
                } [@@deriving yojson]
+
+      let def = { body     = ""
+                ; filename = None
+                ; info     = None
+                ; url      = None
+                ; file     = None
+                ; msgtype  = "m.file"
+                }
     end
 
     module Audio = struct
@@ -515,12 +584,24 @@ end = struct
                   ; size     : int option    [@default None]
                   } [@@deriving yojson]
 
+      let info_def = { duration = None
+                     ; mimetype = None
+                     ; size     = None
+                     }
+
       type t = { body    : string
                ; info    : info option            [@default None]
                ; url     : string option          [@default None]
                ; file    : EncryptedFile.t option [@default None]
                ; msgtype : string
                } [@@deriving yojson]
+
+      let def = { body    = ""
+                ; info    = None
+                ; url     = None
+                ; file    = None
+                ; msgtype = "m.audio"
+                }
     end
 
     module Location = struct
@@ -529,11 +610,22 @@ end = struct
                   ; thumbnail_info : ThumbnailInfo.t option [@default None]
                   } [@@deriving yojson]
 
+      let info_def = { thumbnail_url  = None
+                     ; thumbnail_file = None
+                     ; thumbnail_info = None
+                     }
+
       type t = { body    : string
                ; geo_uri : string
                ; info    : info option [@default None]
                ; msgtype : string
                } [@@deriving yojson]
+
+      let def = { body    = ""
+                ; geo_uri = ""
+                ; info    = None
+                ; msgtype = "m.location"
+                }
     end
 
     module Video = struct
@@ -547,6 +639,16 @@ end = struct
                   ; thumbnail_info : ThumbnailInfo.t option [@default None]
                   } [@@deriving yojson]
 
+      let info_def = { duration       = None
+                     ; h              = None
+                     ; w              = None
+                     ; mimetype       = None
+                     ; size           = None
+                     ; thumbnail_url  = None
+                     ; thumbnail_file = None
+                     ; thumbnail_info = None
+                     }
+
       (* NOTE: url or file is required depending on encryption. *)
       type t = { body    : string
                ; info    : info option            [@default None]
@@ -554,6 +656,13 @@ end = struct
                ; file    : EncryptedFile.t option [@default None]
                ; msgtype : string
                } [@@deriving yojson]
+
+      let def = { body    = ""
+                ; info    = None
+                ; url     = None
+                ; file    = None
+                ; msgtype = "m.video"
+                }
     end
 
     type t =
