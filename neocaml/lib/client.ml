@@ -8,6 +8,8 @@ open Cohttp_lwt_unix
 (* open Yojson_helpers *)
 open Neo_infix
 
+(* NOTE: Should probably not have random state in the client, but this will
+ * do for now until I think about it. *)
 type t = { homeserver      : string
          ; user            : string
          ; user_id         : string option
