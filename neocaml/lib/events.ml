@@ -31,7 +31,7 @@ module rec Room : sig
              ; size     : int option
              }
     include DerivingYojson with type t := t
-    val def      : t
+    val def : unit -> t
   end
 
   module ImageInfo : sig
@@ -44,7 +44,7 @@ module rec Room : sig
              ; thumbnail_file : EncryptedFile.t option
              }
     include DerivingYojson with type t := t
-    val def      : t
+    val def : unit -> t
   end
   module Message : sig
     module Text : sig
@@ -57,7 +57,7 @@ module rec Room : sig
                ; relates_to     : relates option
                }
       include DerivingYojson with type t := t
-      val def : t
+      val def : unit -> t
     end
 
     module Emote : sig
@@ -67,7 +67,7 @@ module rec Room : sig
                ; msgtype        : string
                }
       include DerivingYojson with type t := t
-      val def : t
+      val def : unit -> t
     end
 
     module Notice : sig
@@ -77,7 +77,7 @@ module rec Room : sig
                ; msgtype        : string
                }
       include DerivingYojson with type t := t
-      val def : t
+      val def : unit -> t
     end
 
     module Image : sig
@@ -88,7 +88,7 @@ module rec Room : sig
                ; msgtype : string
                }
       include DerivingYojson with type t := t
-      val def : t
+      val def : unit -> t
     end
 
     module File : sig
@@ -105,11 +105,9 @@ module rec Room : sig
                ; file     : EncryptedFile.t option
                ; msgtype  : string
                }
-      (* val info_of_yojson :
-       *   Yojson.Safe.t -> info Ppx_deriving_yojson_runtime.error_or *)
       include DerivingYojson with type t := t
-      val info_def : info
-      val def      : t
+      val info_def : unit -> info
+      val def      : unit -> t
     end
 
     module Audio : sig
@@ -124,8 +122,8 @@ module rec Room : sig
                ; msgtype : string
                }
       include DerivingYojson with type t := t
-      val info_def : info
-      val def      : t
+      val info_def : unit -> info
+      val def      : unit -> t
     end
 
     module Location : sig
@@ -139,8 +137,8 @@ module rec Room : sig
                ; msgtype : string
                }
       include DerivingYojson with type t := t
-      val info_def : info
-      val def      : t
+      val info_def : unit -> info
+      val def      : unit -> t
     end
 
     module Video : sig
@@ -160,8 +158,8 @@ module rec Room : sig
                ; msgtype : string
                }
       include DerivingYojson with type t := t
-      val info_def : info
-      val def      : t
+      val info_def : unit -> info
+      val def      : unit -> t
     end
 
     type t =
@@ -450,11 +448,11 @@ end = struct
              ; size     : int option    [@default None]
              } [@@deriving yojson]
 
-    let def = { h        = None
-              ; w        = None
-              ; mimetype = None
-              ; size     = None
-              }
+    let def () = { h        = None
+                 ; w        = None
+                 ; mimetype = None
+                 ; size     = None
+                 }
   end
 
   module ImageInfo = struct
@@ -467,14 +465,14 @@ end = struct
              ; thumbnail_file : EncryptedFile.t option [@default None]
              } [@@deriving yojson]
 
-    let def = { h              = None
-              ; w              = None
-              ; mimetype       = None
-              ; size           = None
-              ; thumbnail_info = None
-              ; thumbnail_url  = None
-              ; thumbnail_file = None
-              }
+    let def () = { h              = None
+                 ; w              = None
+                 ; mimetype       = None
+                 ; size           = None
+                 ; thumbnail_info = None
+                 ; thumbnail_url  = None
+                 ; thumbnail_file = None
+                 }
   end
 
   module Message = struct
@@ -493,12 +491,12 @@ end = struct
         ; relates_to     : relates option [@key "m.relates_to"] [@default None]
         } [@@deriving yojson]
 
-      let def = { body           = ""
-                ; format         = None
-                ; formatted_body = None
-                ; msgtype        = "m.text"
-                ; relates_to     = None
-                }
+      let def () = { body           = ""
+                   ; format         = None
+                   ; formatted_body = None
+                   ; msgtype        = "m.text"
+                   ; relates_to     = None
+                   }
     end
 
     module Emote = struct
@@ -508,11 +506,11 @@ end = struct
                ; msgtype        : string
                } [@@deriving yojson]
 
-      let def = { body           = ""
-                ; format         = None
-                ; formatted_body = None
-                ; msgtype        = "m.emote"
-                }
+      let def () = { body           = ""
+                   ; format         = None
+                   ; formatted_body = None
+                   ; msgtype        = "m.emote"
+                   }
     end
 
     module Notice = struct
@@ -522,11 +520,11 @@ end = struct
                ; msgtype        : string
                } [@@deriving yojson]
 
-      let def = { body           = ""
-                ; format         = None
-                ; formatted_body = None
-                ; msgtype        = "m.notice"
-                }
+      let def () = { body           = ""
+                   ; format         = None
+                   ; formatted_body = None
+                   ; msgtype        = "m.notice"
+                   }
     end
 
     module Image = struct
@@ -538,12 +536,12 @@ end = struct
                ; msgtype : string
                } [@@deriving yojson]
 
-      let def = { body    = ""
-                ; info    = None
-                ; url     = None
-                ; file    = None
-                ; msgtype = "m.image"
-                }
+      let def () = { body    = ""
+                   ; info    = None
+                   ; url     = None
+                   ; file    = None
+                   ; msgtype = "m.image"
+                   }
     end
 
     module File = struct
@@ -554,12 +552,12 @@ end = struct
                   ; thumbnail_info : ThumbnailInfo.t option [@default None]
                   } [@@deriving yojson]
 
-      let info_def = { mimetype       = None
-                     ; size           = None
-                     ; thumbnail_url  = None
-                     ; thumbnail_file = None
-                     ; thumbnail_info = None
-                     }
+      let info_def () = { mimetype       = None
+                        ; size           = None
+                        ; thumbnail_url  = None
+                        ; thumbnail_file = None
+                        ; thumbnail_info = None
+                        }
 
       type t = { body     : string
                ; filename : string option          [@default None]
@@ -569,13 +567,13 @@ end = struct
                ; msgtype  : string
                } [@@deriving yojson]
 
-      let def = { body     = ""
-                ; filename = None
-                ; info     = None
-                ; url      = None
-                ; file     = None
-                ; msgtype  = "m.file"
-                }
+      let def () = { body     = ""
+                   ; filename = None
+                   ; info     = None
+                   ; url      = None
+                   ; file     = None
+                   ; msgtype  = "m.file"
+                   }
     end
 
     module Audio = struct
@@ -584,10 +582,10 @@ end = struct
                   ; size     : int option    [@default None]
                   } [@@deriving yojson]
 
-      let info_def = { duration = None
-                     ; mimetype = None
-                     ; size     = None
-                     }
+      let info_def () = { duration = None
+                        ; mimetype = None
+                        ; size     = None
+                        }
 
       type t = { body    : string
                ; info    : info option            [@default None]
@@ -596,12 +594,12 @@ end = struct
                ; msgtype : string
                } [@@deriving yojson]
 
-      let def = { body    = ""
-                ; info    = None
-                ; url     = None
-                ; file    = None
-                ; msgtype = "m.audio"
-                }
+      let def () = { body    = ""
+                   ; info    = None
+                   ; url     = None
+                   ; file    = None
+                   ; msgtype = "m.audio"
+                   }
     end
 
     module Location = struct
@@ -610,10 +608,10 @@ end = struct
                   ; thumbnail_info : ThumbnailInfo.t option [@default None]
                   } [@@deriving yojson]
 
-      let info_def = { thumbnail_url  = None
-                     ; thumbnail_file = None
-                     ; thumbnail_info = None
-                     }
+      let info_def () = { thumbnail_url  = None
+                        ; thumbnail_file = None
+                        ; thumbnail_info = None
+                        }
 
       type t = { body    : string
                ; geo_uri : string
@@ -621,11 +619,11 @@ end = struct
                ; msgtype : string
                } [@@deriving yojson]
 
-      let def = { body    = ""
-                ; geo_uri = ""
-                ; info    = None
-                ; msgtype = "m.location"
-                }
+      let def () = { body    = ""
+                   ; geo_uri = ""
+                   ; info    = None
+                   ; msgtype = "m.location"
+                   }
     end
 
     module Video = struct
@@ -639,15 +637,15 @@ end = struct
                   ; thumbnail_info : ThumbnailInfo.t option [@default None]
                   } [@@deriving yojson]
 
-      let info_def = { duration       = None
-                     ; h              = None
-                     ; w              = None
-                     ; mimetype       = None
-                     ; size           = None
-                     ; thumbnail_url  = None
-                     ; thumbnail_file = None
-                     ; thumbnail_info = None
-                     }
+      let info_def () = { duration       = None
+                        ; h              = None
+                        ; w              = None
+                        ; mimetype       = None
+                        ; size           = None
+                        ; thumbnail_url  = None
+                        ; thumbnail_file = None
+                        ; thumbnail_info = None
+                        }
 
       (* NOTE: url or file is required depending on encryption. *)
       type t = { body    : string
@@ -657,12 +655,12 @@ end = struct
                ; msgtype : string
                } [@@deriving yojson]
 
-      let def = { body    = ""
-                ; info    = None
-                ; url     = None
-                ; file    = None
-                ; msgtype = "m.video"
-                }
+      let def () = { body    = ""
+                   ; info    = None
+                   ; url     = None
+                   ; file    = None
+                   ; msgtype = "m.video"
+                   }
     end
 
     type t =
