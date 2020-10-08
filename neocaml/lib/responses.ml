@@ -30,6 +30,10 @@ module RoomMessages = struct
             } [@@deriving of_yojson]
 end
 
+module RoomSend = struct
+  type t = { event_id : string } [@@deriving of_yojson]
+end
+
 module RoomMember = struct
   type t = { user_id      : string
            ; display_name : string
