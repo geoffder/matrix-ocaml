@@ -57,7 +57,12 @@ module rec Room : sig
                ; relates_to     : relates option
                }
       include DerivingYojson with type t := t
-      val def : unit -> t
+      val create
+        :  ?format:string
+        -> ?formatted_body:string
+        -> ?relates_to:relates
+        -> string
+        -> Room.Message.t
     end
 
     module Emote : sig
@@ -491,12 +496,13 @@ end = struct
         ; relates_to     : relates option [@key "m.relates_to"] [@default None]
         } [@@deriving yojson]
 
-      let def () = { body           = ""
-                   ; format         = None
-                   ; formatted_body = None
-                   ; msgtype        = "m.text"
-                   ; relates_to     = None
-                   }
+      let create ?format ?formatted_body ?relates_to body =
+        Room.Message.Text { body
+                          ; format
+                          ; formatted_body
+                          ; msgtype = "m.text"
+                          ; relates_to
+                          }
     end
 
     module Emote = struct
