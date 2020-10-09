@@ -1,8 +1,8 @@
-open Base
+open Core
 open Neocaml
 open Neocaml.Neo_infix
 
-let client = Client.make "https://matrix.org" "@beheddard:matrix.org"
+let client = Client.make "https://shakeandwake.xyz" "@test_user:matrix.shakeandwake.xyz"
 
 (* For simple relative pathing from the running directory, which for this module
  * is neocaml/bin/default/test. *)
@@ -20,10 +20,8 @@ let logged =
              |> Yojson.Safe.Util.to_string in
   Types.Credential.Password pass |> Client.login client
 
-let room_id = "!UDTBpvFlRSZlyIbhvr:matrix.org"
-let prev_batch =
-  "t38-1427171613_757284957_4873410_582557651" ^
-  "_411860784_1530319_90440135_287505593_127848"
+let room_id = "!IYzufTUjKQbVlmtONr:matrix.shakeandwake.xyz"
+let prev_batch = ""
 
 let messages = logged >=> fun c -> Client.room_messages c room_id prev_batch
 
@@ -32,3 +30,16 @@ let%test "room messages" = Lwt_main.run messages |> Result.is_ok
 let sync_resp = logged >=> Client.sync
 
 let%test "sync response" = Lwt_main.run sync_resp |> Result.is_ok
+
+let send_poggers () =
+  let open Events.Room in
+  let pogchamp =
+    "<img src='mxc://matrix.shakeandwake.xyz/JTlEcEaBsmCuZzVDNdVgSvQN'" ^
+    " alt=':pogchamp:' width=32 height=32>" in
+  let formatted = sprintf "%s wew %s lad %s" pogchamp pogchamp pogchamp in
+  let content =
+    Message.Text.create
+      ~format:"org.matrix.custom.html"
+      ~formatted_body:formatted
+      ":pogchamp: wew :pogchamp: lad :pogchamp:" in
+  logged >=> fun c -> Client.room_send c room_id (Content.Message content)
