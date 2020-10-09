@@ -252,6 +252,9 @@ let content_repository_config access =
   let queries = query "access_token" access in
   (`GET, build_path ~queries ~api_path:matrix_media_path "config", None)
 
+(* NOTE: Response is an MXC URI, may want to use this for emoji uploading.
+ * Unfortunately, no way to check whether it is already in the database with
+ * a corresponding mxc though I guess. Need to read into matrix media storage. *)
 let upload ?filename access =
   let queries =
     query_of_option "filename" filename
