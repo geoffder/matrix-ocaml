@@ -31,7 +31,14 @@ module RoomMessages = struct
 end
 
 module RoomSend = struct
-  type t = { event_id : string } [@@deriving of_yojson]
+  (* TODO: First encounter with reponse of { errcode; error }. If this is a common
+   * response schema, maybe I should make that a module type deriving of_yojson.
+   * Then, when converting to a response fails, maybe try mapping the error to
+   * the code and error? Otherwise leave error as is? *)
+  type t = { event_id : string option [@default None]
+           ; errcode  : string option [@default None]
+           ; error    : string option [@default None]
+           } [@@deriving of_yojson]
 end
 
 module RoomMember = struct
