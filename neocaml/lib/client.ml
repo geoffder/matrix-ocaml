@@ -30,7 +30,7 @@ let make ?device_id ?store_path ?access_token homeserver user =
   ; access_token
   ; rooms           = Map.empty (module String)
   ; encrypted_rooms = Set.empty (module String)
-  ; random_state    = Random.State.make_self_init ()
+  ; random_state    = Random.State.make_self_init ~allow_in_tests:true ()
   }
 
 let complete_uri client pth = client.homeserver ^ pth |> Uri.of_string
@@ -139,8 +139,7 @@ let room_messages ?stop ?dir ?(limit=10) ?filter client id start =
   logged_in client >=> fun token ->
     Api.room_messages ?stop ?dir ~limit ?filter token id start
     |> send client
-    (* >>| Yojson.Safe.to_string *)
-    >>| Responses.RoomMessages.of_yojson
+    >>| Responses.(of_yojson (module RoomMessages))
 
 let room_send client id event =
   logged_in client >=> fun token ->
@@ -149,11 +148,10 @@ let room_send client id event =
     let tx_id = Uuid.create_random client.random_state |> Uuid.to_string in
     Api.room_send token id m_type body tx_id
     |> send client
-    >>| Responses.RoomSend.of_yojson
+    >>| Responses.(of_yojson (module RoomSend))
 
-let sync ?since ?timeout ?filter ?full_state:(full=false) ?set_presence client =
+let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence client =
   logged_in client >=> fun token ->
-    Api.sync ?since ?timeout ?filter ~full_state:full ?set_presence token
+    Api.sync ?since ?timeout ?filter ~full_state ?set_presence token
     |> send client
-    (* >>| Yojson.Safe.to_string *)
-    >>| Responses.Sync.of_yojson
+    >>| Responses.(of_yojson (module Sync))
