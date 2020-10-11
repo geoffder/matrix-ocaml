@@ -41,5 +41,16 @@ let send_poggers () =
     Message.Text.create
       ~format:"org.matrix.custom.html"
       ~formatted_body:formatted
-      ":pogchamp: wew :pogchamp: lad :pogchamp:" in
+      ":pogchamp: wew :pogchamp: lad :pogchamp:"
+    |> Message.text in
+  logged >=> fun c -> Client.room_send c room_id (Content.Message content)
+
+let send_emote () =
+  let open Events.Room in
+  let content = Message.Emote.create "smiles creepily." |> Message.emote in
+  logged >=> fun c -> Client.room_send c room_id (Content.Message content)
+
+let send_notice () =
+  let open Events.Room in
+  let content = Message.Notice.create "You're on notice!" |> Message.notice in
   logged >=> fun c -> Client.room_send c room_id (Content.Message content)
