@@ -1,6 +1,44 @@
 open Base
-open Neo_infix
 open Yojson_helpers
+
+module ErrorResponse = struct
+  module Standard = struct
+    type t = { errcode        : string
+             ; error          : string option [@default None]
+             ; retry_after_ms : int option    [@default None]
+             } [@@deriving of_yojson]
+  end
+
+  module Auth = struct
+    type stages = { stages : string list } [@@deriving of_yojson]
+
+    type params_map = (string StringMap.t) StringMap.t
+
+    let params_map_of_yojson =
+      StringMap.of_yojson (StringMap.of_yojson string_of_yojson)
+
+    type t = { errcode   : string
+             ; error     : string option [@default None]
+             ; completed : string list
+             ; flows     : stages list
+             ; params    : params_map
+             ; session   : string
+             } [@@deriving of_yojson]
+  end
+
+  type t = StdErr of Standard.t | AuthErr of Auth.t | UnkErr of Yojson.Safe.t
+  let std_err e  = StdErr e
+  let auth_err e = AuthErr e
+  let unk_err e  = UnkErr e
+
+  let of_yojson j =
+    let open Result in
+    begin
+      if Yojson.Safe.equal (U.member "session" j) `Null
+      then Standard.of_yojson j >>| std_err
+      else Auth.of_yojson j     >>| auth_err
+    end |> map_error ~f:(fun _ -> unk_err j)
+end
 
 module EventList = struct
   type t = { events : Events.t list } [@@deriving of_yojson]
@@ -11,13 +49,7 @@ module StateList = struct
 end
 
 module JoinedRooms = struct
-  (* NOTE: This is just for the response to the joined_rooms API request, not to
-   * be confused with JoinedRoom which is part of the sync response. *)
-  type t = string list
-
-  let of_yojson =
-    U.member "joined_rooms"
-    >> typed_list_of_yojson string_of_yojson
+  type t = { joined_rooms : string list } [@@deriving of_yojson]
 end
 
 module RoomMessages = struct
@@ -31,14 +63,7 @@ module RoomMessages = struct
 end
 
 module RoomSend = struct
-  (* TODO: First encounter with reponse of { errcode; error }. If this is a common
-   * response schema, maybe I should make that a module type deriving of_yojson.
-   * Then, when converting to a response fails, maybe try mapping the error to
-   * the code and error? Otherwise leave error as is? *)
-  type t = { event_id : string option [@default None]
-           ; errcode  : string option [@default None]
-           ; error    : string option [@default None]
-           } [@@deriving of_yojson]
+  type t = { event_id : string } [@@deriving of_yojson]
 end
 
 module RoomMember = struct
@@ -83,11 +108,11 @@ module Sync = struct
     (* NOTE: Not sure whether to bother with weird fields like msc count below
      * or just resign to using non-strict everywhere... *)
     type info =
-      { summary              : RoomSummary.t option [@default None]
-      ; state                : StateList.t option   [@default None]
-      ; timeline             : Timeline.t option    [@default None]
-      ; ephemeral            : EventList.t option   [@default None]
-      ; account_data         : EventList.t option   [@default None]
+      { summary              : RoomSummary.t option              [@default None]
+      ; state                : StateList.t option                [@default None]
+      ; timeline             : Timeline.t option                 [@default None]
+      ; ephemeral            : EventList.t option                [@default None]
+      ; account_data         : EventList.t option                [@default None]
       ; unread_notifications : UnreadNotificationCounts.t option [@default None]
       ; msc2654_unread_count : int option [@key "org.matrix.msc2654.unread_count"] [@default None]
       } [@@deriving of_yojson { strict = false }]
@@ -151,3 +176,6 @@ module Sync = struct
     ; device_one_time_keys_count : OneTimeKeysCount.t option [@default None]
     } [@@deriving of_yojson { strict = false }]
 end
+
+let of_yojson (type a) (module M : DerivingOfYojson with type t = a) j =
+  M.of_yojson j |> Result.map_error ~f:(fun _ -> ErrorResponse.of_yojson j)
