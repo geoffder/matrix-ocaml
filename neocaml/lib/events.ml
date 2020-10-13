@@ -135,7 +135,7 @@ module Typing = struct
   type content = { user_ids : string list } [@@deriving of_yojson]
 
   type t = { m_type  : string [@key "type"]
-           ; room_id : string
+           ; room_id : string option [@default None]
            ; content : content
            } [@@deriving of_yojson]
 end
