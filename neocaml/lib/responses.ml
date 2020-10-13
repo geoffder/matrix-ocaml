@@ -37,7 +37,21 @@ module ErrorResponse = struct
       if Yojson.Safe.equal (U.member "session" j) `Null
       then Standard.of_yojson j >>| std_err
       else Auth.of_yojson j     >>| auth_err
-    end |> map_error ~f:(fun _ -> unk_err j)
+    end |> function
+    | Ok err  -> err
+    | Error _ -> unk_err j
+end
+
+module NeoError = struct
+  type t =
+    | RespErr of ErrorResponse.t
+    | JsonErr of string
+    | Max429s     (* Client.send: too many requests *)
+    | MaxTimeouts (* Client.send: timeout limit exceeded *)
+    | NotLoggedIn
+
+  let resp_err e = RespErr e
+  let json_err e = JsonErr e
 end
 
 module EventList = struct
@@ -64,6 +78,10 @@ end
 
 module RoomSend = struct
   type t = { event_id : string } [@@deriving of_yojson]
+end
+
+module Upload = struct
+  type t = { content_uri : string } [@@deriving of_yojson]
 end
 
 module RoomMember = struct
@@ -177,5 +195,9 @@ module Sync = struct
     } [@@deriving of_yojson { strict = false }]
 end
 
+(* TODO: My error modelling is still not great, this way ends up ignoring the
+ * error string from deriving_yojson that says which of_yojson failed. *)
 let of_yojson (type a) (module M : DerivingOfYojson with type t = a) j =
-  M.of_yojson j |> Result.map_error ~f:(fun _ -> ErrorResponse.of_yojson j)
+  M.of_yojson j
+  (* |> Result.map_error ~f:NeoError.json_err *)
+  |> Result.map_error ~f:(fun _ -> ErrorResponse.of_yojson j |> NeoError.resp_err)
