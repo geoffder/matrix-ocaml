@@ -795,9 +795,9 @@ end = struct
                          } [@@deriving yojson]
 
     type t = { creator      : string
-             ; federate     : bool option          [@default None]
-             ; room_version : string option        [@default None]
-             ; predecessor  : previous_room option [@default None]
+             ; federate     : bool option [@key "m.federate"] [@default None]
+             ; room_version : string option                   [@default None]
+             ; predecessor  : previous_room option            [@default None]
              } [@@deriving yojson]
   end
 
