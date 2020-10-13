@@ -41,11 +41,27 @@ let body_of_json j = j |> Yojson.Safe.to_string |> Cohttp_lwt.Body.of_string
 
 let json_of_body b = b |> Cohttp_lwt.Body.to_string >|= Yojson.Safe.from_string
 
+let read_chunk fd () =
+  let buffer = Bytes.create 1024 in
+  Lwt_unix.read fd buffer 0 1024 >|= function
+  | 1024 -> Some (Bytes.to_string buffer)
+  | 0    -> None
+  | a    -> Some (Bytes.sub ~pos:0 ~len:a buffer |> Bytes.to_string)
+
+(* TODO: If I want monitoring, I'll have to put monitoring closure as
+ * a side-effect action into the thunk given to Lwt_stream.from. Also, decide
+ * whether I compose that here, or make it an optional part of read_chunk w/e. *)
+let create_data_provider pth () =
+  Lwt_unix.(openfile pth [ O_RDONLY ] 0) >|= fun fd ->
+  Lwt_stream.from (read_chunk fd)
+  |> Cohttp_lwt.Body.of_stream
+  |> Option.some
+
 (* Continue execution of given function if logged in. *)
 let logged_in client =
   client.access_token
   |> Option.value_map ~f:Lwt.return_ok
-    ~default:(Lwt.return_error "Not logged in.")
+    ~default:(Lwt.return_error Responses.NeoError.NotLoggedIn)
 
 let with_timeout ?timeout ~call uri =
   let times_up =
@@ -60,7 +76,8 @@ let with_timeout ?timeout ~call uri =
 
 let repeat ?timeout ?(max_429s=100) ?(max_outs=100) ~call ~get_data meth uri =
   let rec aux n_429s n_outs =
-    let loaded = call ?body:(get_data ()) meth in
+    get_data () >>= fun body ->
+    let loaded = call ?body meth in
     with_timeout ?timeout ~call:loaded uri
     >>= function
     | Ok (resp, _body as response) ->
@@ -68,12 +85,13 @@ let repeat ?timeout ?(max_429s=100) ?(max_outs=100) ~call ~get_data meth uri =
       then
         if n_429s < max_429s
         then Lwt_unix.sleep 5. >>= fun () -> aux (n_429s + 1) n_outs
-        else Lwt.return_error "Hit maximum 'too many requests' (429) responses."
+        else Lwt.return_error Responses.NeoError.Max429s
       else Lwt.return_ok response
     | Error `TimedOut ->
       if n_outs < max_outs
       then Lwt_unix.sleep 5. >>= fun () -> aux n_429s (n_outs + 1)
-      else Lwt.return_error "Hit maximum timeouts." in
+      else Lwt.return_error Responses.NeoError.MaxTimeouts
+  in
   aux 0 0
 
 (* ctx would come from client if actually needed? See where it is used in nio *)
@@ -95,12 +113,12 @@ let send
     |> Header.of_list in
   let uri = complete_uri client pth in
   let body = Option.map ~f:body_of_json content in
-  let get_data = Option.value ~default:(fun () -> body) data_provider in
+  let get_data = Option.value ~default:(fun () -> Lwt.return body) data_provider in
   let call = Client.call ?ctx ?chunked:None ~headers in
   repeat ?timeout ~call ~get_data meth uri
-  >=> fun (_resp, body) ->
-    Cohttp_lwt.Body.to_string body
-    >>= ( Yojson.Safe.from_string >> Lwt.return_ok )
+  >>=? fun (_resp, body) ->
+  Cohttp_lwt.Body.to_string body
+  >>= ( Yojson.Safe.from_string >> Lwt.return_ok )
 
 let login ?device_name client cred =
   Api.login ?device_name ?device_id:client.device_id client.user cred
@@ -114,18 +132,16 @@ let login ?device_name client cred =
   }
 
 let logout ?(all_devices=false) client =
-  match client.access_token with
-  | None -> Lwt.return_error "Already logged out."
-  | Some token ->
-    Api.logout ~all_devices token
-    |> send client
-    >>| fun _ -> { client with access_token = None }
+  logged_in client >>=? fun token ->
+  Api.logout ~all_devices token
+  |> send client
+  >>| fun _ -> { client with access_token = None }
 
 let joined_rooms client =
-  logged_in client >=> fun token ->
-    Api.joined_rooms token
-    |> send client
-    >>| Responses.JoinedRooms.of_yojson
+  logged_in client >>=? fun token ->
+  Api.joined_rooms token
+  |> send client
+  >>| Responses.JoinedRooms.of_yojson
 
 (* NOTE:
  * Response is a list of room events, the of json is a bit more compicated.
@@ -136,22 +152,35 @@ let joined_rooms client =
  * a "msgtype" in their "content" dict) are included. The module for this one
  * must cover a lot of bases. *)
 let room_messages ?stop ?dir ?(limit=10) ?filter client id start =
-  logged_in client >=> fun token ->
-    Api.room_messages ?stop ?dir ~limit ?filter token id start
-    |> send client
-    >>| Responses.(of_yojson (module RoomMessages))
+  logged_in client >>=? fun token ->
+  Api.room_messages ?stop ?dir ~limit ?filter token id start
+  |> send client
+  >>=? (Responses.(of_yojson (module RoomMessages)) >> Lwt.return)
 
 let room_send client id event =
-  logged_in client >=> fun token ->
-    let body = Events.Room.Content.to_yojson event in
-    let m_type = Events.Room.Content.to_m_type event in
-    let tx_id = Uuid.create_random client.random_state |> Uuid.to_string in
-    Api.room_send token id m_type body tx_id
-    |> send client
-    >>| Responses.(of_yojson (module RoomSend))
+  logged_in client >>=? fun token ->
+  let body = Events.Room.Content.to_yojson event in
+  let m_type = Events.Room.Content.to_m_type event in
+  let tx_id = Uuid.create_random client.random_state |> Uuid.to_string in
+  Api.room_send token id m_type body tx_id
+  |> send client
+  >>=? (Responses.(of_yojson (module RoomSend)) >> Lwt.return)
 
 let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence client =
-  logged_in client >=> fun token ->
-    Api.sync ?since ?timeout ?filter ~full_state ?set_presence token
-    |> send client
-    >>| Responses.(of_yojson (module Sync))
+  logged_in client >>=? fun token ->
+  Api.sync ?since ?timeout ?filter ~full_state ?set_presence token
+  |> send client
+  >>=? (Responses.(of_yojson (module Sync)) >> Lwt.return)
+
+(* TODO: Add encrypt generation option... *)
+let upload
+    ?(content_type="application/octet-stream")
+    ?filename
+    ?content_len
+    data_provider
+    client
+  =
+  logged_in client >>=? fun token ->
+  Api.upload ?filename token
+  |> send ~content_type ~data_provider ?content_len client
+  >>=? (Responses.(of_yojson (module Upload)) >> Lwt.return)
