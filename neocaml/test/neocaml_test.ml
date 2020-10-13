@@ -23,11 +23,11 @@ let logged =
 let room_id = "!IYzufTUjKQbVlmtONr:matrix.shakeandwake.xyz"
 let prev_batch = ""
 
-let messages = logged >=> fun c -> Client.room_messages c room_id prev_batch
+let messages = logged >>=? fun c -> Client.room_messages c room_id prev_batch
 
 let%test "room messages" = Lwt_main.run messages |> Result.is_ok
 
-let sync_resp = logged >=> Client.sync
+let sync_resp = logged >>=? Client.sync
 
 let%test "sync response" = Lwt_main.run sync_resp |> Result.is_ok
 
@@ -43,14 +43,14 @@ let send_poggers () =
       ~formatted_body:formatted
       ":pogchamp: wew :pogchamp: lad :pogchamp:"
     |> Message.text in
-  logged >=> fun c -> Client.room_send c room_id (Content.Message content)
+  logged >>=? fun c -> Client.room_send c room_id (Content.Message content)
 
 let send_emote () =
   let open Events.Room in
   let content = Message.Emote.create "smiles creepily." |> Message.emote in
-  logged >=> fun c -> Client.room_send c room_id (Content.Message content)
+  logged >>=? fun c -> Client.room_send c room_id (Content.Message content)
 
 let send_notice () =
   let open Events.Room in
   let content = Message.Notice.create "You're on notice!" |> Message.notice in
-  logged >=> fun c -> Client.room_send c room_id (Content.Message content)
+  logged >>=? fun c -> Client.room_send c room_id (Content.Message content)
