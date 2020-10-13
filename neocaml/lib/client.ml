@@ -123,7 +123,7 @@ let send
 let login ?device_name client cred =
   Api.login ?device_name ?device_id:client.device_id client.user cred
   |> send client
-  >>| fun j ->
+  >>|? fun j ->
   let open Yojson.Safe.Util in
   { client with
     user_id      = j |> member "user_id" |> to_string_option
@@ -135,13 +135,13 @@ let logout ?(all_devices=false) client =
   logged_in client >>=? fun token ->
   Api.logout ~all_devices token
   |> send client
-  >>| fun _ -> { client with access_token = None }
+  >>|? fun _ -> { client with access_token = None }
 
 let joined_rooms client =
   logged_in client >>=? fun token ->
   Api.joined_rooms token
   |> send client
-  >>| Responses.JoinedRooms.of_yojson
+  >>|? Responses.JoinedRooms.of_yojson
 
 (* NOTE:
  * Response is a list of room events, the of json is a bit more compicated.
