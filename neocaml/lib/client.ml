@@ -141,21 +141,13 @@ let joined_rooms client =
   logged_in client >>=? fun token ->
   Api.joined_rooms token
   |> send client
-  >>|? Responses.JoinedRooms.of_yojson
+  >>|=? Responses.(of_yojson (module JoinedRooms))
 
-(* NOTE:
- * Response is a list of room events, the of json is a bit more compicated.
- * Requires checking "content" -> "msgtype" for each element of the returned
- * list at key "chunk". Keys "end" and "start" contain the since tokens I think.
- * m.room.message and m.room.name are actually both possible for "type", which
- * is at the same level as "content", meaning that not just messages (which have
- * a "msgtype" in their "content" dict) are included. The module for this one
- * must cover a lot of bases. *)
 let room_messages ?stop ?dir ?(limit=10) ?filter client id start =
   logged_in client >>=? fun token ->
   Api.room_messages ?stop ?dir ~limit ?filter token id start
   |> send client
-  >>=? (Responses.(of_yojson (module RoomMessages)) >> Lwt.return)
+  >>|=? Responses.(of_yojson (module RoomMessages))
 
 let room_send client id event =
   logged_in client >>=? fun token ->
@@ -164,13 +156,13 @@ let room_send client id event =
   let tx_id = Uuid.create_random client.random_state |> Uuid.to_string in
   Api.room_send token id m_type body tx_id
   |> send client
-  >>=? (Responses.(of_yojson (module RoomSend)) >> Lwt.return)
+  >>|=? Responses.(of_yojson (module RoomSend))
 
 let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence client =
   logged_in client >>=? fun token ->
   Api.sync ?since ?timeout ?filter ~full_state ?set_presence token
   |> send client
-  >>=? (Responses.(of_yojson (module Sync)) >> Lwt.return)
+  >>|=? Responses.(of_yojson (module Sync))
 
 (* TODO: Add encrypt generation option... *)
 let upload
