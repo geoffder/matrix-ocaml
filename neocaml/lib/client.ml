@@ -64,6 +64,9 @@ let read_chunk ?(sz=1024) ?(monitor=Monitor.def) fd () =
   | 0 -> monitor.finish (); None
   | a -> monitor.step a; Some (Bytes.sub ~pos:0 ~len:a buffer |> Bytes.to_string)
 
+(* TODO: Call initiation / reset method on the monitor. Or think about an
+ * additional leve lof closure that will alllow `repeat  to work with monitored
+ * uploads appropriately. *)
 let create_data_provider ?monitor pth () =
   Lwt_unix.(openfile pth [ O_RDONLY ] 0) >|= fun fd ->
   Lwt_stream.from (read_chunk ?monitor fd)
@@ -190,6 +193,29 @@ let upload
   |> send ~content_type ~data_provider ?content_len client
   >>|=? Responses.(of_yojson (module Upload))
 
+let image_exts = [ "png"; "gif"; "jpg"; "jpeg"; "webp"; "tif"; "tiff"; "svg"; "bmp" ]
+let is_image = List.mem ~equal:String.equal image_exts
+
+let video_exts = [ "avi"; "mpeg"; "ogv"; "webm" ]
+let is_video = List.mem ~equal:String.equal video_exts
+
+let fix_ext = function
+  | "avi" -> "x-msvideo"
+  | "ogv" -> "ogg"
+  | "jpg" -> "jpeg"
+  | "svg" -> "svg+xml"
+  | a     -> a
+
+let ext_to_content_type = function
+  | e when is_image e -> "image/" ^ fix_ext e
+  | e when is_video e -> "video/" ^ fix_ext e
+  | _                 -> "appication/octet-stream"
+
+(* TODO: Make a more generic room_upload function that uses the oabove funcs
+ * to build the content_type, and decide which Room.Message to send. Seems like
+ * it will be a bit clunky though since the constructor is outside of the actual
+ * sub-module. Another reason to reconsider the inclusion of create with wrapper
+ * functions (very common need). *)
 let send_image ?monitor pth room_id client =
   let provider = create_data_provider ?monitor pth in
   let filename = Filename.split pth |> snd in
