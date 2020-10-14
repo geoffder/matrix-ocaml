@@ -54,3 +54,9 @@ let send_notice () =
   let open Events.Room in
   let content = Message.Notice.create "You're on notice!" |> Message.notice in
   logged >>=? fun c -> Client.room_send c room_id (Content.Message content)
+
+let img_pth = "/home/" ^ Unix.getlogin () ^ "/Pictures/emojis/bigben.png"
+
+let send_image () =
+  let monitor = { Client.Monitor.def with step = fun n -> printf "%i bytes\n" n } in
+  logged >>=? Client.send_image ~monitor img_pth room_id
