@@ -192,11 +192,12 @@ let upload
 
 let send_image ?monitor pth room_id client =
   let provider = create_data_provider ?monitor pth in
-  let content_type = Filename.split_extension pth
+  let filename = Filename.split pth |> snd in
+  let content_type = Filename.split_extension filename
                      |> snd
                      |> Option.value ~default:"png"
                      |> ( ^ ) "image/" in
-  upload ~content_type provider client >>=? fun { content_uri } ->
+  upload ~content_type ~filename provider client >>=? fun { content_uri } ->
   let open Events.Room in
-  let msg = Message.Image.create ~url:content_uri "" |> Message.image in
+  let msg = Message.Image.create ~url:content_uri filename |> Message.image in
   room_send client room_id (Content.Message msg)
