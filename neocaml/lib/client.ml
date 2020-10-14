@@ -41,19 +41,32 @@ let body_of_json j = j |> Yojson.Safe.to_string |> Cohttp_lwt.Body.of_string
 
 let json_of_body b = b |> Cohttp_lwt.Body.to_string >|= Yojson.Safe.from_string
 
-let read_chunk fd () =
-  let buffer = Bytes.create 1024 in
-  Lwt_unix.read fd buffer 0 1024 >|= function
-  | 1024 -> Some (Bytes.to_string buffer)
-  | 0    -> None
-  | a    -> Some (Bytes.sub ~pos:0 ~len:a buffer |> Bytes.to_string)
+(* TODO: Decide on how I actually want to do this.
+ * For one thing, the send / repeat functions are not aware of this, which
+ * they will need to be in order to call an initiating / reseting call back.
+ * How much is done with the monitor, and what is the responsibility of the caller? *)
+module Monitor = struct
+  type t = { step    : int -> unit
+           ; finish  : unit -> unit
+           ; reset   : unit -> unit
+           }
 
-(* TODO: If I want monitoring, I'll have to put monitoring closure as
- * a side-effect action into the thunk given to Lwt_stream.from. Also, decide
- * whether I compose that here, or make it an optional part of read_chunk w/e. *)
-let create_data_provider pth () =
+  let def = { step   = (fun _ -> ())
+            ; finish = (fun () -> ())
+            ; reset  = (fun () -> ())
+            }
+end
+
+let read_chunk ?(sz=1024) ?(monitor=Monitor.def) fd () =
+  let buffer = Bytes.create sz in
+  Lwt_unix.read fd buffer 0 sz >|= function
+  | a when a = sz -> monitor.step a; Some (Bytes.to_string buffer)
+  | 0 -> monitor.finish (); None
+  | a -> monitor.step a; Some (Bytes.sub ~pos:0 ~len:a buffer |> Bytes.to_string)
+
+let create_data_provider ?monitor pth () =
   Lwt_unix.(openfile pth [ O_RDONLY ] 0) >|= fun fd ->
-  Lwt_stream.from (read_chunk fd)
+  Lwt_stream.from (read_chunk ?monitor fd)
   |> Cohttp_lwt.Body.of_stream
   |> Option.some
 
