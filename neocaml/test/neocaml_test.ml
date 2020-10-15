@@ -56,7 +56,11 @@ let send_notice () =
   logged >>=? fun c -> Client.room_send c room_id (Content.Message content)
 
 let img_pth = "/home/" ^ Unix.getlogin () ^ "/Pictures/emojis/bigben.png"
-
 let send_image () =
-  let monitor = { Client.Monitor.def with step = fun n -> printf "%i bytes\n" n } in
+  let monitor = Monitor.stdout_bar () in
   logged >>=? Client.send_image ~monitor img_pth room_id
+
+let webm_pth = "/home/" ^ Unix.getlogin () ^ "/Videos/webms/chad_wants_two.webm"
+let send_webm () =
+  let monitor = Monitor.stdout_bar () in
+  logged >>=? Client.room_upload ~monitor webm_pth room_id
