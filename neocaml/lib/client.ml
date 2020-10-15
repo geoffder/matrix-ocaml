@@ -193,29 +193,6 @@ let upload
   |> send ~content_type ~data_provider ?content_len client
   >>|=? Responses.(of_yojson (module Upload))
 
-let image_exts = [ "png"; "gif"; "jpg"; "jpeg"; "webp"; "tif"; "tiff"; "svg"; "bmp" ]
-let is_image = List.mem ~equal:String.equal image_exts
-
-let video_exts = [ "avi"; "mpeg"; "ogv"; "webm" ]
-let is_video = List.mem ~equal:String.equal video_exts
-
-let fix_ext = function
-  | "avi" -> "x-msvideo"
-  | "ogv" -> "ogg"
-  | "jpg" -> "jpeg"
-  | "svg" -> "svg+xml"
-  | a     -> a
-
-let ext_to_content_type = function
-  | e when is_image e -> "image/" ^ fix_ext e
-  | e when is_video e -> "video/" ^ fix_ext e
-  | _                 -> "appication/octet-stream"
-
-(* TODO: Make a more generic room_upload function that uses the oabove funcs
- * to build the content_type, and decide which Room.Message to send. Seems like
- * it will be a bit clunky though since the constructor is outside of the actual
- * sub-module. Another reason to reconsider the inclusion of create with wrapper
- * functions (very common need). *)
 let send_image ?monitor pth room_id client =
   let provider = create_data_provider ?monitor pth in
   let filename = Filename.split pth |> snd in
@@ -227,3 +204,13 @@ let send_image ?monitor pth room_id client =
   let open Events.Room in
   let msg = Message.Image.create ~url:content_uri filename |> Message.image in
   room_send client room_id (Content.Message msg)
+
+let room_upload ?monitor pth room_id client =
+  let open File_helpers in
+  let provider = create_data_provider ?monitor pth in
+  let filename = Filename.split pth |> snd in
+  let ext = Filename.split_extension filename |> snd in
+  let content_type = Ext.to_content_type ext in
+  upload ~content_type ~filename provider client >>=? fun { content_uri } ->
+  let msg = (Ext.to_msg_create ext) ~url:content_uri filename in
+  room_send client room_id (Events.Room.Content.Message msg)
