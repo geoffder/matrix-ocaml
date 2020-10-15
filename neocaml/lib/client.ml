@@ -41,23 +41,7 @@ let body_of_json j = j |> Yojson.Safe.to_string |> Cohttp_lwt.Body.of_string
 
 let json_of_body b = b |> Cohttp_lwt.Body.to_string >|= Yojson.Safe.from_string
 
-(* TODO: Decide on how I actually want to do this.
- * For one thing, the send / repeat functions are not aware of this, which
- * they will need to be in order to call an initiating / reseting call back.
- * How much is done with the monitor, and what is the responsibility of the caller? *)
-module Monitor = struct
-  type t = { step    : int -> unit
-           ; finish  : unit -> unit
-           ; reset   : unit -> unit
-           }
-
-  let def = { step   = (fun _ -> ())
-            ; finish = (fun () -> ())
-            ; reset  = (fun () -> ())
-            }
-end
-
-let read_chunk ?(sz=1024) ?(monitor=Monitor.def) fd () =
+let read_chunk ?(sz=1024) (monitor : Monitor.t) fd () =
   let buffer = Bytes.create sz in
   Lwt_unix.read fd buffer 0 sz >|= function
   | a when a = sz -> monitor.step a; Some (Bytes.to_string buffer)
@@ -67,9 +51,13 @@ let read_chunk ?(sz=1024) ?(monitor=Monitor.def) fd () =
 (* TODO: Call initiation / reset method on the monitor. Or think about an
  * additional leve lof closure that will alllow `repeat  to work with monitored
  * uploads appropriately. *)
-let create_data_provider ?monitor pth () =
+let create_data_provider ?(monitor=Monitor.def) pth () =
+  let file_size = (Unix.stat pth).st_size
+                  |> Int64.to_int
+                  |> Option.value ~default:Int.max_value in
   Lwt_unix.(openfile pth [ O_RDONLY ] 0) >|= fun fd ->
-  Lwt_stream.from (read_chunk ?monitor fd)
+  monitor.init file_size;
+  Lwt_stream.from (read_chunk monitor fd)
   |> Cohttp_lwt.Body.of_stream
   |> Option.some
 
