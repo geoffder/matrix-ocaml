@@ -68,6 +68,12 @@ module rec Room : sig
         -> ?relates_to:relates
         -> string
         -> t
+      val create_msg
+        :  ?format:string
+        -> ?formatted_body:string
+        -> ?relates_to:relates
+        -> string
+        -> Room.Message.t
     end
 
     module Emote : sig
@@ -78,6 +84,7 @@ module rec Room : sig
                }
       include DerivingYojson with type t := t
       val create : ?format:string -> ?formatted_body:string -> string -> t
+      val create_msg : ?format:string -> ?formatted_body:string -> string -> Room.Message.t
     end
 
     module Notice : sig
@@ -88,6 +95,7 @@ module rec Room : sig
                }
       include DerivingYojson with type t := t
       val create : ?format:string -> ?formatted_body:string -> string -> t
+      val create_msg : ?format:string -> ?formatted_body:string -> string -> Room.Message.t
     end
 
     module Image : sig
@@ -104,6 +112,13 @@ module rec Room : sig
         -> ?file:EncryptedFile.t
         -> string
         -> t
+      val create_msg
+        :  ?info:ImageInfo.t
+        -> ?url:string
+        -> ?file:EncryptedFile.t
+        -> string
+        -> Room.Message.t
+      val no_info_msg : ?url:string -> ?file:EncryptedFile.t -> string -> Room.Message.t
     end
 
     module File : sig
@@ -136,6 +151,14 @@ module rec Room : sig
         -> ?file:EncryptedFile.t
         -> string
         -> t
+      val create_msg
+        :  ?filename:string
+        -> ?info:info
+        -> ?url:string
+        -> ?file:EncryptedFile.t
+        -> string
+        -> Room.Message.t
+      val no_info_msg : ?url:string -> ?file:EncryptedFile.t -> string -> Room.Message.t
     end
 
     module Audio : sig
@@ -162,6 +185,13 @@ module rec Room : sig
         -> ?file:EncryptedFile.t
         -> string
         -> t
+      val create_msg
+        :  ?info:info
+        -> ?url:string
+        -> ?file:EncryptedFile.t
+        -> string
+        -> Room.Message.t
+      val no_info_msg : ?url:string -> ?file:EncryptedFile.t -> string -> Room.Message.t
     end
 
     module Location : sig
@@ -182,6 +212,7 @@ module rec Room : sig
         -> unit
         -> info
       val create : ?info:info -> geo_uri:string -> string -> t
+      val create_msg : ?info:info -> geo_uri:string -> string -> Room.Message.t
     end
 
     module Video : sig
@@ -218,6 +249,13 @@ module rec Room : sig
         -> ?file:EncryptedFile.t
         -> string
         -> t
+      val create_msg
+        :  ?info:info
+        -> ?url:string
+        -> ?file:EncryptedFile.t
+        -> string
+        -> Room.Message.t
+      val no_info_msg : ?url:string -> ?file:EncryptedFile.t -> string -> Room.Message.t
     end
 
     type t =
@@ -240,9 +278,9 @@ module rec Room : sig
     val location  : Location.t -> t
     val video     : Video.t -> t
     val unknown   : Yojson.Safe.t -> t
+
     val of_yojson : Yojson.Safe.t -> (t, string) Result.t
     val to_yojson : t -> Yojson.Safe.t
-
   end
 
   module Create : sig
@@ -560,6 +598,8 @@ end = struct
         ; msgtype = "m.text"
         ; relates_to
         }
+      let create_msg ?format ?formatted_body ?relates_to body =
+        create ?format ?formatted_body ?relates_to body |> Room.Message.text
     end
 
     module Emote = struct
@@ -575,6 +615,8 @@ end = struct
         ; formatted_body
         ; msgtype = "m.emote"
         }
+      let create_msg ?format ?formatted_body body =
+        create ?format ?formatted_body body |> Room.Message.emote
     end
 
     module Notice = struct
@@ -590,6 +632,8 @@ end = struct
         ; formatted_body
         ; msgtype = "m.notice"
         }
+      let create_msg ?format ?formatted_body body =
+        create ?format ?formatted_body body |> Room.Message.notice
     end
 
     module Image = struct
@@ -608,6 +652,9 @@ end = struct
         ; file
         ; msgtype = "m.image"
         }
+      let create_msg ?info ?url ?file body =
+        create ?info ?url ?file body |> Room.Message.image
+      let no_info_msg ?url ?file body = create_msg ?url ?file body
     end
 
     module File = struct
@@ -642,6 +689,9 @@ end = struct
         ; file
         ; msgtype = "m.file"
         }
+      let create_msg ?filename ?info ?url ?file body =
+        create ?filename ?info ?url ?file body |> Room.Message.file
+      let no_info_msg ?url ?file body = create_msg ?url ?file body
     end
 
     module Audio = struct
@@ -670,6 +720,9 @@ end = struct
         ; file
         ; msgtype = "m.audio"
         }
+      let create_msg ?info ?url ?file body =
+        create ?info ?url ?file body |> Room.Message.audio
+      let no_info_msg ?url ?file body = create_msg ?url ?file body
     end
 
     module Location = struct
@@ -696,6 +749,8 @@ end = struct
         ; info
         ; msgtype = "m.location"
         }
+      let create_msg ?info ~geo_uri body =
+        create ?info ~geo_uri body |> Room.Message.location
     end
 
     module Video = struct
@@ -737,6 +792,9 @@ end = struct
         ; file
         ; msgtype = "m.video"
         }
+      let create_msg ?info ?url ?file body =
+        create ?info ?url ?file body |> Room.Message.video
+      let no_info_msg ?url ?file body = create_msg ?url ?file body
     end
 
     type t =
