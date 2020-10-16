@@ -48,15 +48,12 @@ let read_chunk ?(sz=1024) (monitor : Monitor.t) fd () =
   | 0 -> monitor.finish (); None
   | a -> monitor.step a; Some (Bytes.sub ~pos:0 ~len:a buffer |> Bytes.to_string)
 
-(* TODO: Call initiation / reset method on the monitor. Or think about an
- * additional leve lof closure that will alllow `repeat  to work with monitored
- * uploads appropriately. *)
 let create_data_provider ?(monitor=Monitor.def) pth () =
   let file_size = (Unix.stat pth).st_size
                   |> Int64.to_int
                   |> Option.value ~default:Int.max_value in
-  Lwt_unix.(openfile pth [ O_RDONLY ] 0) >|= fun fd ->
   monitor.init file_size;
+  Lwt_unix.(openfile pth [ O_RDONLY ] 0) >|= fun fd ->
   Lwt_stream.from (read_chunk monitor fd)
   |> Cohttp_lwt.Body.of_stream
   |> Option.some
