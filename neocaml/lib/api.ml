@@ -16,9 +16,11 @@ let query_of_option key = Option.value_map ~f:(query key) ~default:[]
 let query_of_option_map ~f key =
   Option.value_map ~f:(f |> Fn.compose (query key)) ~default:[]
 
+let ( // ) a b = a ^ "/" ^ b
+
 let build_path ?queries ?(api_path=matrix_api_path) path =
   let q = queries |> Option.value_map ~f:Uri.encoded_of_query ~default:"" in
-  api_path ^ "/" ^ path ^ "?" ^ q
+  api_path // path ^ "?" ^ q
 
 (* Api call funcs ->
  *  Cohttp.Code.meth * string * Yojson.Safe.t option *)
@@ -59,35 +61,35 @@ let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence access =
 
 let room_send access room_id event_type body tx_id =
   let queries = query "access_token" access in
-  let pth = Printf.sprintf "rooms/%s/send/%s/%s" room_id event_type tx_id in
+  let pth =  "rooms" // room_id // "send" // event_type // tx_id in
   (`PUT, build_path ~queries pth, Some body)
 
 let room_get_event access room_id event_id =
   let queries = query "access_token" access in
-  let pth = Printf.sprintf "rooms/%s/event/%s" room_id event_id in
+  let pth = "rooms" // room_id // "event" // event_id in
   (`GET, build_path ~queries pth, None)
 
 let room_put_state ?state_key access room_id event_type body =
   let queries = query "access_token" access in
   let key = Option.value ~default:"" state_key in
-  let pth = Printf.sprintf "rooms/%s/state/%s/%s" room_id event_type key in
+  let pth = "rooms" // room_id // "state" // event_type // key in
   (`PUT, build_path ~queries pth, Some body)
 
 let room_get_state_event ?state_key access room_id event_type =
   let queries = query "access_token" access in
   let key = Option.value ~default:"" state_key in
-  let pth = Printf.sprintf "rooms/%s/state/%s/%s" room_id event_type key in
+  let pth = "rooms" // room_id // "state" // event_type // key in
   (`GET, build_path ~queries pth, None)
 
 let room_get_state access room_id =
   let queries = query "access_token" access in
-  let pth = "rooms/" ^ room_id ^ "/state" in
+  let pth = "rooms" // room_id // "state" in
   (`GET, build_path ~queries pth, None)
 
 let room_redact ?reason access room_id event_id tx_id =
   let queries = query "access_token" access in
   let content = [ ("reason", json_of_option yo_string reason) ] |> yo_assoc in
-  let pth = Printf.sprintf "rooms/%s/redact/%s/%s" room_id event_id tx_id in
+  let pth = "rooms" // room_id // "redact" // event_id // tx_id in
   (`PUT, build_path ~queries pth, Some content)
 
 let room_kick ?reason access room_id user_id =
@@ -95,7 +97,7 @@ let room_kick ?reason access room_id user_id =
   let content = [ ("user_id", yo_string user_id)
                 ; ("reason", json_of_option yo_string reason)
                 ] |> yo_assoc in
-  let pth = "rooms/" ^ room_id ^ "/kick" in
+  let pth = "rooms" // room_id // "kick" in
   (`POST, build_path ~queries pth, Some content)
 
 let room_ban ?reason access room_id user_id =
@@ -103,19 +105,19 @@ let room_ban ?reason access room_id user_id =
   let content = [ ("user_id", yo_string user_id)
                 ; ("reason", json_of_option yo_string reason)
                 ] |> yo_assoc in
-  let pth = "rooms/" ^ room_id ^ "/ban" in
+  let pth = "rooms" // room_id // "ban" in
   (`POST, build_path ~queries pth, Some content)
 
 let room_unban access room_id user_id =
   let queries = query "access_token" access in
   let content = yo_assoc [ ("user_id", yo_string user_id) ] in
-  let pth = "rooms/" ^ room_id ^ "/unban" in
+  let pth = "rooms" // room_id // "unban" in
   (`POST, build_path ~queries pth, Some content)
 
 let room_invite access room_id user_id =
   let queries = query "access_token" access in
   let content = yo_assoc [ ("user_id", yo_string user_id) ] in
-  let pth = "rooms/" ^ room_id ^ "/invite" in
+  let pth = "rooms" // room_id // "invite" in
   (`POST, build_path ~queries pth, Some content)
 
 (* NOTE: Invite is just a list of user_id, but initial state and power args
@@ -134,17 +136,17 @@ let room_create ?invite ?initial_state ?power_override access config =
 
 let join access room_id =
   let queries = query "access_token" access in
-  let pth = "join/" ^ room_id in
+  let pth = "join" // room_id in
   (`POST, build_path ~queries pth, Some (yo_assoc []))
 
 let room_leave access room_id =
   let queries = query "access_token" access in
-  let pth = "rooms/" ^ room_id ^ "/leave" in
+  let pth = "rooms" // room_id // "leave" in
   (`POST, build_path ~queries pth, Some (yo_assoc []))
 
 let room_forget access room_id =
   let queries = query "access_token" access in
-  let pth = "rooms/" ^ room_id ^ "/forget" in
+  let pth = "rooms" // room_id // "forget" in
   (`POST, build_path ~queries pth, Some (yo_assoc []))
 
 let room_messages ?stop ?dir ?(limit=10) ?filter access room_id start =
@@ -156,7 +158,7 @@ let room_messages ?stop ?dir ?(limit=10) ?filter access room_id start =
       ; ("from",         [ start ])
       ; ("limit",        [ Int.to_string limit ])
       ] in
-  let pth = "rooms/" ^ room_id ^ "/messages" in
+  let pth = "rooms" // room_id // "messages" in
   (`GET, build_path ~queries pth, None)
 
 (* NOTE: the body that is expected is a complex nested json. Will need to build
@@ -198,7 +200,7 @@ let devices access =
  *  Need to make a corresponding type and to_json. *)
 let update_device access device_id content =
   let queries = query "access_token" access in
-  let pth = "devices/" ^ device_id ^ "/joined_members" in
+  let pth = "devices" // device_id // "joined_members" in
   (`PUT, build_path ~queries pth, Some content)
 
 (* TODO: Don't know what auth_dict (auth_json) is yet, but the nio docstring
@@ -212,7 +214,7 @@ let delete_devices ?auth_json access devices =
 
 let joined_members access room_id =
   let queries = query "access_token" access in
-  let pth = "rooms/" ^ room_id ^ "/joined_members" in
+  let pth = "rooms" // room_id // "joined_members" in
   (`GET, build_path ~queries pth, None)
 
 let joined_rooms access =
@@ -220,21 +222,21 @@ let joined_rooms access =
   (`GET, build_path ~queries "joined_rooms", None)
 
 let room_resolve_alias room_alias =
-  (`GET, build_path ("directory/room/" ^ room_alias), None)
+  (`GET, build_path ("directory/room" // room_alias), None)
 
 let room_typing ?(typing=true) ?timeout access room_id user_id =
   let queries = query "access_token" access in
   let content = [ ("typing",  Bool.to_string typing |> yo_string)
                 ; ("timeout", Option.value ~default:30000 timeout |> yo_int)
                 ] |> yo_assoc in
-  let pth = Printf.sprintf "rooms/%s/typing/%s" room_id user_id in
+  let pth = "rooms" // room_id // "typing" // user_id in
   (`PUT, build_path ~queries pth, Some content)
 
 let update_receipt_marker ?receipt_type access room_id event_id =
   let queries = query "access_token" access in
   (* Currently "m.read" is the only supported type. *)
   let rec_type = Option.value ~default:"m.read" receipt_type in
-  let pth = Printf.sprintf "rooms/%s/receipt/%s/%s" room_id rec_type event_id in
+  let pth = "rooms" // room_id // "receipt" // rec_type // event_id in
   (`POST, build_path ~queries pth, None)
 
 let room_read_markers ?read_event_id access room_id fully_read_event_id =
@@ -242,7 +244,7 @@ let room_read_markers ?read_event_id access room_id fully_read_event_id =
   let content = [ ("m.fully_read", yo_string fully_read_event_id)
                 ; ("m.read", json_of_option yo_string read_event_id)
                 ] |> yo_assoc in
-  let pth = "rooms/" ^ room_id ^ "/read_markers" in
+  let pth = "rooms" // room_id // "read_markers" in
   (`POST, build_path ~queries pth, Some content)
 
 let content_repository_config access =
@@ -267,23 +269,23 @@ let thumbnail ?(allow_remote=true) server_name media_id width height resize =
     @ query "height" (Int.to_string height)
     @ query "method" (Resize.to_string resize)
     @ query "allow_remote" (Bool.to_string allow_remote) in
-  let pth = Printf.sprintf "thumbnail/%s/%s" server_name media_id in
+  let pth = "thumbnail" // server_name // media_id in
   (`GET, build_path ~queries ~api_path:matrix_media_path pth, None)
 
-let profile_get user_id = (`GET, build_path ("profile/" ^ user_id), None)
+let profile_get user_id = (`GET, build_path ("profile" // user_id), None)
 
 let profile_get_displayname user_id =
-  let pth = "profile/" ^ user_id ^ "/displayname" in
+  let pth = "profile" // user_id // "displayname" in
   (`GET, build_path pth, None)
 
 let profile_set_displayname access user_id display_name =
   let queries = query "access_token" access in
   let content = yo_assoc [ ("displayname", yo_string display_name) ] in
-  let pth = "profile/" ^ user_id ^ "displayname" in
+  let pth = "profile" // user_id // "displayname" in
   (`PUT, build_path ~queries pth, Some content)
 
 let profile_get_avatar user_id =
-  let pth = "profile/" ^ user_id ^ "/avatar_url" in
+  let pth = "profile" // user_id // "avatar_url" in
   (`GET, build_path pth, None)
 
 let profile_set_avatar access user_id avatar_url =
@@ -291,21 +293,21 @@ let profile_set_avatar access user_id avatar_url =
   (* NOTE: Note sure if appropriate to Uri encode here... *)
   let content =
     yo_assoc [ ("avatar_url", Uri.pct_encode avatar_url |> yo_string) ] in
-  let pth = "profile/" ^ user_id ^ "/avatar_url" in
+  let pth = "profile" // user_id // "avatar_url" in
   (`PUT, build_path ~queries pth, Some content)
 
 let get_presence access user_id =
   let queries = query "access_token" access in
-  let pth = "presence/" ^ user_id ^ "/status" in
+  let pth = "presence" // user_id // "status" in
   (`GET, build_path ~queries pth, None)
 
 let set_presence ?status_msg access user_id presence =
   let queries = query "access_token" access in
   let content =
-    [ ("presence",   Presence.to_string presence |> yo_string)
+    [ ("presence"  , Presence.to_string presence |> yo_string)
     ; ("status_msg", json_of_option yo_string status_msg)
     ] |> yo_assoc in
-  let pth = "presence/" ^ user_id ^ "/status" in
+  let pth = "presence" // user_id // "status" in
   (`PUT, build_path ~queries pth, Some content)
 
 let whoami access =
@@ -316,7 +318,7 @@ let room_context ?limit access room_id event_id =
   let queries =
     query_of_option_map ~f:Int.to_string "limit" limit
     @ query "access_token" access in
-  let pth = Printf.sprintf "rooms/%s/context/%s" room_id event_id in
+  let pth = "rooms" // room_id // "context" // event_id in
   (`GET, build_path ~queries pth, None)
 
 let upload_filter = ()
