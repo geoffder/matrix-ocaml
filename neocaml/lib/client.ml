@@ -62,7 +62,7 @@ let create_data_provider ?(monitor=Monitor.def) pth () =
 let logged_in client =
   client.access_token
   |> Option.value_map ~f:Lwt.return_ok
-    ~default:(Lwt.return_error Responses.NeoError.NotLoggedIn)
+    ~default:(Lwt.return_error `NotLoggedIn)
 
 let with_timeout ?timeout ~call uri =
   let times_up =
@@ -86,12 +86,12 @@ let repeat ?timeout ?(max_429s=100) ?(max_outs=100) ~call ~get_data meth uri =
       then
         if n_429s < max_429s
         then Lwt_unix.sleep 5. >>= fun () -> aux (n_429s + 1) n_outs
-        else Lwt.return_error Responses.NeoError.Max429s
+        else Lwt.return_error `Max429s
       else Lwt.return_ok response
     | Error `TimedOut ->
       if n_outs < max_outs
       then Lwt_unix.sleep 5. >>= fun () -> aux n_429s (n_outs + 1)
-      else Lwt.return_error Responses.NeoError.MaxTimeouts
+      else Lwt.return_error `MaxTimeouts
   in
   aux 0 0
 

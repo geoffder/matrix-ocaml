@@ -1,58 +1,5 @@
-open Base
+open Core
 open Yojson_helpers
-
-module ErrorResponse = struct
-  module Standard = struct
-    type t = { errcode        : string
-             ; error          : string option [@default None]
-             ; retry_after_ms : int option    [@default None]
-             } [@@deriving of_yojson]
-  end
-
-  module Auth = struct
-    type stages = { stages : string list } [@@deriving of_yojson]
-
-    type params_map = (string StringMap.t) StringMap.t
-
-    let params_map_of_yojson =
-      StringMap.of_yojson (StringMap.of_yojson string_of_yojson)
-
-    type t = { errcode   : string
-             ; error     : string option [@default None]
-             ; completed : string list
-             ; flows     : stages list
-             ; params    : params_map
-             ; session   : string
-             } [@@deriving of_yojson]
-  end
-
-  type t = StdErr of Standard.t | AuthErr of Auth.t | UnkErr of Yojson.Safe.t
-  let std_err e  = StdErr e
-  let auth_err e = AuthErr e
-  let unk_err e  = UnkErr e
-
-  let of_yojson j =
-    let open Result in
-    begin
-      if Yojson.Safe.equal (U.member "session" j) `Null
-      then Standard.of_yojson j >>| std_err
-      else Auth.of_yojson j     >>| auth_err
-    end |> function
-    | Ok err  -> err
-    | Error _ -> unk_err j
-end
-
-module NeoError = struct
-  type t =
-    | RespErr of ErrorResponse.t
-    | JsonErr of string
-    | Max429s     (* Client.send: too many requests *)
-    | MaxTimeouts (* Client.send: timeout limit exceeded *)
-    | NotLoggedIn
-
-  let resp_err e = RespErr e
-  let json_err e = JsonErr e
-end
 
 module EventList = struct
   type t = { events : Events.t list } [@@deriving of_yojson]
@@ -195,9 +142,6 @@ module Sync = struct
     } [@@deriving of_yojson { strict = false }]
 end
 
-(* TODO: My error modelling is still not great, this way ends up ignoring the
- * error string from deriving_yojson that says which of_yojson failed. *)
 let of_yojson (type a) (module M : DerivingOfYojson with type t = a) j =
   M.of_yojson j
-  (* |> Result.map_error ~f:NeoError.json_err *)
-  |> Result.map_error ~f:(fun _ -> ErrorResponse.of_yojson j |> NeoError.resp_err)
+  |> Result.map_error ~f:(fun e -> NeoError.Resp.of_yojson e j)
