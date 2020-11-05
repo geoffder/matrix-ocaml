@@ -22,6 +22,45 @@ let build_path ?queries ?(api_path=matrix_api_path) path =
   let q = queries |> Option.value_map ~f:Uri.encoded_of_query ~default:"" in
   api_path // path ^ "?" ^ q
 
+let mxc_to_http ?homeserver mxc =
+  let open Option in
+  let uri = Uri.of_string mxc in
+  Uri.scheme uri                         >>= fun scheme ->
+  some_if (String.equal scheme "mxc") () >>= fun () ->
+  Uri.host uri                           >>= fun server_name ->
+  let home =
+    match homeserver with
+    | None ->
+      let port =
+        Uri.port uri
+        |> value_map ~default:"" ~f:(fun p -> ":" ^ (Int.to_string p)) in
+      "https://" ^ server_name ^ port
+    | Some url -> url
+  in
+  Some (home ^ "/_matrix/media/r0/download/" ^ server_name ^ (Uri.path uri))
+
+let encrypted_mxc_to_plumb ?homeserver mxc key hash iv =
+  let open Option in
+  let uri = Uri.of_string mxc in
+  Uri.scheme uri                         >>= fun scheme ->
+  some_if (String.equal scheme "mxc") () >>= fun () ->
+  Uri.host uri                           >>= fun server_name ->
+  let home =
+    match homeserver with
+    | None ->
+      let port =
+        Uri.port uri
+        |> value_map ~default:"" ~f:(fun p -> ":" ^ (Int.to_string p)) in
+      "emxc://" ^ server_name ^ port
+    | Some url -> Uri.with_scheme  (Uri.of_string url) (Some "emxc") |> Uri.to_string
+  in
+  [ ("key",  [ key ])
+  ; ("hash", [ hash ])
+  ; ("iv",   [ iv ])
+  ] |> Uri.encoded_of_query
+  |> sprintf "%s/_matrix/media/r0/download/%s%s?%s" home server_name (Uri.path uri)
+  |> some
+
 (* Api call funcs ->
  *  Cohttp.Code.meth * string * Yojson.Safe.t option *)
 
