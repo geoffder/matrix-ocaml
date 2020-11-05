@@ -1,6 +1,14 @@
 open Core
 open Yojson_helpers
 
+module Empty (M : sig val fail : string end) = struct
+  type t = unit
+
+  let of_yojson = function
+    | `Assoc [] -> Result.return ()
+    | _         -> Result.fail M.fail
+end
+
 module EventList = struct
   type t = { events : Events.t list } [@@deriving of_yojson]
 end
@@ -66,6 +74,12 @@ module KeysQuery = struct
            ; device_keys : device_keys StringMap.t StringMap.t
            } [@@deriving of_yojson]
 end
+
+module UpdateDevice = Empty (struct let fail = "User has no device with given ID." end)
+module DeleteDevices = Empty (struct let fail = "Additional authentication is required." end)
+
+(* TODO: Add an additional authentication required response (interactive
+ * authentication API support) *)
 
 module Sync = struct
   module Timeline = struct
