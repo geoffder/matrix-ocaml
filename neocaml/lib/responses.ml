@@ -39,11 +39,32 @@ module RoomMember = struct
 end
 
 module Device = struct
-  type t = { id             : string
-           ; display_name   : string
-           ; last_seen_ip   : string
-           ; last_seen_date : string (* FIXME: Should be a datetime type? *)
-           }
+  type t = { device_id    : string
+           ; user_id      : string
+           ; display_name : string option [@default None]
+           ; last_seen_ts : int option    [@default None]
+           ; last_seen_ip : string option [@default None]
+           } [@@deriving of_yojson]
+end
+
+module Devices = struct
+  type t = { devices : Device.t list } [@@deriving of_yojson]
+end
+
+module KeysQuery = struct
+  type unsigned_device_info = { device_display_name : string } [@@deriving of_yojson]
+
+  type device_keys = { user_id    : string
+                     ; device_id  : string
+                     ; algorithms : string list
+                     ; keys       : string StringMap.t
+                     ; signatures : string StringMap.t StringMap.t
+                     ; unsigned   : unsigned_device_info option [@default None]
+                     } [@@deriving of_yojson]
+
+  type t = { failures    : Yojson.Safe.t StringMap.t
+           ; device_keys : device_keys StringMap.t StringMap.t
+           } [@@deriving of_yojson]
 end
 
 module Sync = struct

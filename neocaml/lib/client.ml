@@ -199,3 +199,17 @@ let room_upload ?monitor pth room_id client =
   upload ~content_type ~filename provider client >>=? fun { content_uri } ->
   let msg = (Ext.to_msg_create ext) ~url:content_uri filename in
   room_send client room_id (Events.Room.Content.Message msg)
+
+let devices client =
+  logged_in client >>=? fun token ->
+  Api.devices token
+  |> send client
+  >>|=? Responses.(of_yojson (module Devices))
+
+let keys_query client users =
+  logged_in client >>=? fun token ->
+  if List.length users > 0 then
+    Api.keys_query token (Set.of_list (module String) users)
+    |> send client
+    >>|=? Responses.(of_yojson (module KeysQuery))
+  else Lwt_result.fail `NoKeyQueryRequired
