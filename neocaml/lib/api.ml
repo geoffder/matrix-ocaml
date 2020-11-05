@@ -166,8 +166,8 @@ let room_create ?invite ?initial_state ?power_override access config =
   let queries = query "access_token" access in
   let power = Option.value ~default:`Null power_override in
   let content =
-    [ ("invite", json_of_option yo_list invite)
-    ; ("initial_state", json_of_option yo_list initial_state)
+    [ ("invite", json_of_option (yo_list yo_string) invite)
+    ; ("initial_state", json_of_option (yo_list Fn.id) initial_state)
     ; ("power_level_content_override", power)
     ] |> yo_assoc
     |> Yojson.Safe.Util.combine @@ Room.Config.to_yojson config in
@@ -207,7 +207,7 @@ let keys_upload = ()
 let keys_query ?since_token access user_set =
   let queries = query "access_token" access in
   let users = Set.to_list user_set
-              |> List.map ~f:(fun u -> u, yo_list [])
+              |> List.map ~f:(fun u -> u, `List [])
               |> yo_assoc in
   let content = [ ("device_keys", users)
                 ; ("token", json_of_option yo_string since_token)
@@ -235,19 +235,16 @@ let devices access =
   let queries = query "access_token" access in
   (`GET, build_path ~queries "devices", None)
 
-(* TODO: content is supposed to be metadata with which to update the device.
- *  Need to make a corresponding type and to_json. *)
 let update_device access device_id content =
   let queries = query "access_token" access in
-  let pth = "devices" // device_id // "joined_members" in
-  (`PUT, build_path ~queries pth, Some content)
+  (`PUT, build_path ~queries ("devices" // device_id), Some content)
 
 (* TODO: Don't know what auth_dict (auth_json) is yet, but the nio docstring
  * says that this should first be called without it... *)
-let delete_devices ?auth_json access devices =
+let delete_devices ?auth access devices =
   let queries = query "access_token" access in
-  let content = [ ("devices", yo_list devices)
-                ; ("auth", json_of_option yo_assoc auth_json)
+  let content = [ ("devices", yo_list yo_string devices)
+                ; ("auth", json_of_option Fn.id auth)
                 ] |> yo_assoc in
   (`POST, build_path ~queries "delete_devices", Some content)
 
