@@ -213,3 +213,26 @@ let keys_query client users =
     |> send client
     >>|=? Responses.(of_yojson (module KeysQuery))
   else Lwt_result.fail `NoKeyQueryRequired
+
+let update_device device_id display_name client =
+  logged_in client >>=? fun token ->
+  `Assoc [ ("display_name", `String display_name) ]
+  |> Api.update_device token device_id
+  |> send client
+  >>|=? Responses.(of_yojson (module UpdateDevice))
+
+let delete_devices ?cred devices client =
+  logged_in client >>=? fun token ->
+  let auth = Types.Credential.(Option.(cred >>| function
+    | Password s  -> `Assoc [ ("type",     `String "m.login.password")
+                            ; ("user",     `String client.user)
+                            ; ("password", `String s)
+                            ]
+    | AuthToken s -> `Assoc [ ("type",  `String "m.login.token")
+                            ; ("token", `String s)
+                            ]
+    ))
+  in
+  Api.delete_devices ?auth token devices
+  |> send client
+  >>|=? Responses.(of_yojson (module DeleteDevices))
