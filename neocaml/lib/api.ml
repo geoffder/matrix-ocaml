@@ -108,16 +108,14 @@ let room_get_event access room_id event_id =
   let pth = "rooms" // room_id // "event" // event_id in
   (`GET, build_path ~queries pth, None)
 
-let room_put_state ?state_key access room_id event_type body =
+let room_put_state ?(state_key="") access room_id event_type body =
   let queries = query "access_token" access in
-  let key = Option.value ~default:"" state_key in
-  let pth = "rooms" // room_id // "state" // event_type // key in
+  let pth = "rooms" // room_id // "state" // event_type // state_key in
   (`PUT, build_path ~queries pth, Some body)
 
-let room_get_state_event ?state_key access room_id event_type =
+let room_get_state_event access room_id event_type state_key =
   let queries = query "access_token" access in
-  let key = Option.value ~default:"" state_key in
-  let pth = "rooms" // room_id // "state" // event_type // key in
+  let pth = "rooms" // room_id // "state" // event_type // state_key in
   (`GET, build_path ~queries pth, None)
 
 let room_get_state access room_id =
