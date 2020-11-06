@@ -91,12 +91,6 @@ module RoomGetState = struct
   type t = Events.Room.t list [@@deriving of_yojson]
 end
 
-module RoomGetStateEvent (M : sig val m_type : string end) = struct
-  type t = Events.Room.Content.t
-
-  let of_yojson = Events.Room.Content.of_yojson M.m_type
-end
-
 module RoomResolveAlias = struct
   type t = { room_id : string
            ; servers : string list
@@ -202,6 +196,5 @@ module Sync = struct
     } [@@deriving of_yojson { strict = false }]
 end
 
-let of_yojson (type a) (module M : DerivingOfYojson with type t = a) j =
-  M.of_yojson j
-  |> Result.map_error ~f:(fun e -> NeoError.Resp.of_yojson e j)
+let of_yojson payload_of_yojson j =
+  payload_of_yojson j |> Result.map_error ~f:(fun e -> NeoError.Resp.of_yojson e j)

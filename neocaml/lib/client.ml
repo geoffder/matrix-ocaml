@@ -142,28 +142,28 @@ let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence t =
   logged_in t >>=? fun token ->
   Api.sync ?since ?timeout ?filter ~full_state ?set_presence token
   |> send t
-  >>|=? Responses.(of_yojson (module Sync))
+  >>|=? Responses.(of_yojson Sync.of_yojson)
 
 let keys_query users t =
   logged_in t >>=? fun token ->
   if List.length users > 0 then
     Api.keys_query token (Set.of_list (module String) users)
     |> send t
-    >>|=? Responses.(of_yojson (module KeysQuery))
+    >>|=? Responses.(of_yojson KeysQuery.of_yojson)
   else Lwt_result.fail `NoKeyQueryRequired
 
 let devices t =
   logged_in t >>=? fun token ->
   Api.devices token
   |> send t
-  >>|=? Responses.(of_yojson (module Devices))
+  >>|=? Responses.(of_yojson Devices.of_yojson)
 
 let update_device device_id display_name t =
   logged_in t >>=? fun token ->
   `Assoc [ ("display_name", `String display_name) ]
   |> Api.update_device token device_id
   |> send t
-  >>|=? Responses.(of_yojson (module UpdateDevice))
+  >>|=? Responses.(of_yojson UpdateDevice.of_yojson)
 
 let delete_devices ?cred devices t =
   logged_in t >>=? fun token ->
@@ -179,19 +179,19 @@ let delete_devices ?cred devices t =
   in
   Api.delete_devices ?auth token devices
   |> send t
-  >>|=? Responses.(of_yojson (module DeleteDevices))
+  >>|=? Responses.(of_yojson DeleteDevices.of_yojson)
 
 let joined_members room_id t =
   logged_in t >>=? fun token ->
   Api.joined_members token room_id
   |> send t
-  >>|=? Responses.(of_yojson (module JoinedMembers))
+  >>|=? Responses.(of_yojson JoinedMembers.of_yojson)
 
 let joined_rooms t =
   logged_in t >>=? fun token ->
   Api.joined_rooms token
   |> send t
-  >>|=? Responses.(of_yojson (module JoinedRooms))
+  >>|=? Responses.(of_yojson JoinedRooms.of_yojson)
 
 (* TODO: Handling encryption. *)
 let room_send ?tx_id id event t =
@@ -202,13 +202,13 @@ let room_send ?tx_id id event t =
   |> Option.value ~default:(Uuid.create_random t.random_state |> Uuid.to_string)
   |> Api.room_send token id m_type body
   |> send t
-  >>|=? Responses.(of_yojson (module EventID))
+  >>|=? Responses.(of_yojson EventID.of_yojson)
 
 let room_get_event room_id event_id t =
   logged_in t >>=? fun token ->
   Api.room_get_event token room_id event_id
   |> send t
-  >>|=? Responses.of_yojson (module Events.Room)
+  >>|=? Responses.of_yojson Events.Room.of_yojson
 
 let room_put_state ?state_key room_id event t =
   logged_in t >>=? fun token ->
@@ -216,19 +216,19 @@ let room_put_state ?state_key room_id event t =
   let m_type = Events.Room.Content.to_m_type event in
   Api.room_put_state ?state_key token room_id m_type body
   |> send t
-  >>|=? Responses.(of_yojson (module EventID))
+  >>|=? Responses.(of_yojson EventID.of_yojson)
 
 let room_get_state room_id t =
   logged_in t >>=? fun token ->
   Api.room_get_state token room_id
   |> send t
-  >>|=? Responses.(of_yojson (module RoomGetState))
+  >>|=? Responses.(of_yojson RoomGetState.of_yojson)
 
 let room_get_state_event room_id event_type state_key t =
   logged_in t >>=? fun token ->
   Api.room_get_state_event token room_id event_type state_key
   |> send t
-  >>|=? Responses.(of_yojson (module RoomGetStateEvent (struct let m_type = event_type end)))
+  >>|=? Responses.of_yojson (Events.Room.Content.of_yojson event_type)
 
 let room_redact ?reason ?tx_id room_id event_id t =
   logged_in t >>=? fun token ->
@@ -236,12 +236,12 @@ let room_redact ?reason ?tx_id room_id event_id t =
   |> Option.value ~default:(Uuid.create_random t.random_state |> Uuid.to_string)
   |> Api.room_redact ?reason token room_id event_id
   |> send t
-  >>|=? Responses.(of_yojson (module EventID))
+  >>|=? Responses.(of_yojson EventID.of_yojson)
 
 let room_resolve_alias room_alias t =
   Api.room_resolve_alias room_alias
   |> send t
-  >>|=? Responses.(of_yojson (module RoomResolveAlias))
+  >>|=? Responses.(of_yojson RoomResolveAlias.of_yojson)
 
 let room_create = ()
 
@@ -265,7 +265,7 @@ let room_messages ?stop ?dir ?(limit=10) ?filter id start t =
   logged_in t >>=? fun token ->
   Api.room_messages ?stop ?dir ~limit ?filter token id start
   |> send t
-  >>|=? Responses.(of_yojson (module RoomMessages))
+  >>|=? Responses.(of_yojson RoomMessages.of_yojson)
 
 let room_typing = ()
 
@@ -286,7 +286,7 @@ let upload
   logged_in t >>=? fun token ->
   Api.upload ?filename token
   |> send ~content_type ~data_provider ?content_len t
-  >>|=? Responses.(of_yojson (module Upload))
+  >>|=? Responses.(of_yojson Upload.of_yojson)
 
 let send_image ?monitor pth room_id t =
   let provider = create_data_provider ?monitor pth in
