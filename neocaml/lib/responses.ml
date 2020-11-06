@@ -31,7 +31,7 @@ module RoomMessages = struct
             } [@@deriving of_yojson]
 end
 
-module RoomSend = struct
+module EventID = struct
   type t = { event_id : string } [@@deriving of_yojson]
 end
 
@@ -76,7 +76,32 @@ module KeysQuery = struct
 end
 
 module UpdateDevice = Empty (struct let fail = "User has no device with given ID." end)
+
 module DeleteDevices = Empty (struct let fail = "Additional authentication is required." end)
+
+module JoinedMembers = struct
+  type room_member = { display_name : string
+                     ; avatar_url   : string
+                     } [@@deriving of_yojson]
+
+  type t = { joined : room_member list } [@@deriving of_yojson]
+end
+
+module RoomGetState = struct
+  type t = Events.Room.t list [@@deriving of_yojson]
+end
+
+module RoomGetStateEvent (M : sig val m_type : string end) = struct
+  type t = Events.Room.Content.t
+
+  let of_yojson = Events.Room.Content.of_yojson M.m_type
+end
+
+module RoomResolveAlias = struct
+  type t = { room_id : string
+           ; servers : string list
+           } [@@deriving of_yojson]
+end
 
 (* TODO: Add an additional authentication required response (interactive
  * authentication API support) *)
