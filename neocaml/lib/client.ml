@@ -21,7 +21,7 @@ type t = { homeserver      : string
          ; random_state    : Random.State.t
          }
 
-let make ?device_id ?store_path ?access_token homeserver user =
+let create ?device_id ?store_path ?access_token homeserver user =
   { homeserver
   ; user
   ; user_id         = None
@@ -33,7 +33,7 @@ let make ?device_id ?store_path ?access_token homeserver user =
   ; random_state    = Random.State.make_self_init ~allow_in_tests:true ()
   }
 
-let complete_uri client pth = client.homeserver ^ pth |> Uri.of_string
+let complete_uri t pth = t.homeserver ^ pth |> Uri.of_string
 
 let response_code = Response.status >> Code.code_of_status
 
@@ -59,8 +59,8 @@ let create_data_provider ?(monitor=Monitor.def) pth () =
   |> Option.some
 
 (* Continue execution of given function if logged in. *)
-let logged_in client =
-  client.access_token
+let logged_in t =
+  t.access_token
   |> Option.value_map ~f:Lwt.return_ok
     ~default:(Lwt.return_error `NotLoggedIn)
 
@@ -102,7 +102,7 @@ let send
     ?content_len
     ?timeout
     ?data_provider
-    client
+    t
     (meth, pth, content)
   =
   let headers =
@@ -112,7 +112,7 @@ let send
       ~default:[]
       content_len
     |> Header.of_list in
-  let uri = complete_uri client pth in
+  let uri = complete_uri t pth in
   let body = Option.map ~f:body_of_json content in
   let get_data = Option.value ~default:(fun () -> Lwt.return body) data_provider in
   let call = Client.call ?ctx ?chunked:None ~headers in
@@ -121,111 +121,55 @@ let send
   Cohttp_lwt.Body.to_string body
   >>= ( Yojson.Safe.from_string >> Lwt.return_ok )
 
-let login ?device_name client cred =
-  Api.login ?device_name ?device_id:client.device_id client.user cred
-  |> send client
+let login ?device_name cred t =
+  Api.login ?device_name ?device_id:t.device_id t.user cred
+  |> send t
   >>|? fun j ->
   let open Yojson.Safe.Util in
-  { client with
+  { t with
     user_id      = j |> member "user_id" |> to_string_option
   ; device_id    = j |> member "device_id" |> to_string_option
   ; access_token = j |> member "access_token" |> to_string_option
   }
 
-let logout ?(all_devices=false) client =
-  logged_in client >>=? fun token ->
+let logout ?(all_devices=false) t =
+  logged_in t >>=? fun token ->
   Api.logout ~all_devices token
-  |> send client
-  >>|? fun _ -> { client with access_token = None }
+  |> send t
+  >>|? fun _ -> { t with access_token = None }
 
-let joined_rooms client =
-  logged_in client >>=? fun token ->
-  Api.joined_rooms token
-  |> send client
-  >>|=? Responses.(of_yojson (module JoinedRooms))
-
-let room_messages ?stop ?dir ?(limit=10) ?filter client id start =
-  logged_in client >>=? fun token ->
-  Api.room_messages ?stop ?dir ~limit ?filter token id start
-  |> send client
-  >>|=? Responses.(of_yojson (module RoomMessages))
-
-let room_send client id event =
-  logged_in client >>=? fun token ->
-  let body = Events.Room.Content.to_yojson event in
-  let m_type = Events.Room.Content.to_m_type event in
-  let tx_id = Uuid.create_random client.random_state |> Uuid.to_string in
-  Api.room_send token id m_type body tx_id
-  |> send client
-  >>|=? Responses.(of_yojson (module RoomSend))
-
-let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence client =
-  logged_in client >>=? fun token ->
+let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence t =
+  logged_in t >>=? fun token ->
   Api.sync ?since ?timeout ?filter ~full_state ?set_presence token
-  |> send client
+  |> send t
   >>|=? Responses.(of_yojson (module Sync))
 
-(* TODO: Add encrypt generation option... *)
-let upload
-    ?(content_type="application/octet-stream")
-    ?filename
-    ?content_len
-    data_provider
-    client
-  =
-  logged_in client >>=? fun token ->
-  Api.upload ?filename token
-  |> send ~content_type ~data_provider ?content_len client
-  >>|=? Responses.(of_yojson (module Upload))
-
-let send_image ?monitor pth room_id client =
-  let provider = create_data_provider ?monitor pth in
-  let filename = Filename.split pth |> snd in
-  let content_type = Filename.split_extension filename
-                     |> snd
-                     |> Option.value ~default:"png"
-                     |> ( ^ ) "image/" in
-  upload ~content_type ~filename provider client >>=? fun { content_uri } ->
-  let open Events.Room in
-  let msg = Message.Image.create ~url:content_uri filename |> Message.image in
-  room_send client room_id (Content.Message msg)
-
-let room_upload ?monitor pth room_id client =
-  let open File_helpers in
-  let provider = create_data_provider ?monitor pth in
-  let filename = Filename.split pth |> snd in
-  let ext = Filename.split_extension filename |> snd in
-  let content_type = Ext.to_content_type ext in
-  upload ~content_type ~filename provider client >>=? fun { content_uri } ->
-  let msg = (Ext.to_msg_create ext) ~url:content_uri filename in
-  room_send client room_id (Events.Room.Content.Message msg)
-
-let devices client =
-  logged_in client >>=? fun token ->
-  Api.devices token
-  |> send client
-  >>|=? Responses.(of_yojson (module Devices))
-
-let keys_query client users =
-  logged_in client >>=? fun token ->
+let keys_query users t =
+  logged_in t >>=? fun token ->
   if List.length users > 0 then
     Api.keys_query token (Set.of_list (module String) users)
-    |> send client
+    |> send t
     >>|=? Responses.(of_yojson (module KeysQuery))
   else Lwt_result.fail `NoKeyQueryRequired
 
-let update_device device_id display_name client =
-  logged_in client >>=? fun token ->
+let devices t =
+  logged_in t >>=? fun token ->
+  Api.devices token
+  |> send t
+  >>|=? Responses.(of_yojson (module Devices))
+
+let update_device device_id display_name t =
+  logged_in t >>=? fun token ->
   `Assoc [ ("display_name", `String display_name) ]
   |> Api.update_device token device_id
-  |> send client
+  |> send t
   >>|=? Responses.(of_yojson (module UpdateDevice))
 
-let delete_devices ?cred devices client =
-  logged_in client >>=? fun token ->
+let delete_devices ?cred devices t =
+  logged_in t >>=? fun token ->
   let auth = Types.Credential.(Option.(cred >>| function
     | Password s  -> `Assoc [ ("type",     `String "m.login.password")
-                            ; ("user",     `String client.user)
+                            ; ("user",     `String t.user)
                             ; ("password", `String s)
                             ]
     | AuthToken s -> `Assoc [ ("type",  `String "m.login.token")
@@ -234,5 +178,154 @@ let delete_devices ?cred devices client =
     ))
   in
   Api.delete_devices ?auth token devices
-  |> send client
+  |> send t
   >>|=? Responses.(of_yojson (module DeleteDevices))
+
+let joined_members room_id t =
+  logged_in t >>=? fun token ->
+  Api.joined_members token room_id
+  |> send t
+  >>|=? Responses.(of_yojson (module JoinedMembers))
+
+let joined_rooms t =
+  logged_in t >>=? fun token ->
+  Api.joined_rooms token
+  |> send t
+  >>|=? Responses.(of_yojson (module JoinedRooms))
+
+(* TODO: Handling encryption. *)
+let room_send ?tx_id id event t =
+  logged_in t >>=? fun token ->
+  let body = Events.Room.Content.to_yojson event in
+  let m_type = Events.Room.Content.to_m_type event in
+  tx_id
+  |> Option.value ~default:(Uuid.create_random t.random_state |> Uuid.to_string)
+  |> Api.room_send token id m_type body
+  |> send t
+  >>|=? Responses.(of_yojson (module EventID))
+
+let room_get_event room_id event_id t =
+  logged_in t >>=? fun token ->
+  Api.room_get_event token room_id event_id
+  |> send t
+  >>|=? Responses.of_yojson (module Events.Room)
+
+let room_put_state ?state_key room_id event t =
+  logged_in t >>=? fun token ->
+  let body   = Events.Room.Content.to_yojson event in
+  let m_type = Events.Room.Content.to_m_type event in
+  Api.room_put_state ?state_key token room_id m_type body
+  |> send t
+  >>|=? Responses.(of_yojson (module EventID))
+
+let room_get_state room_id t =
+  logged_in t >>=? fun token ->
+  Api.room_get_state token room_id
+  |> send t
+  >>|=? Responses.(of_yojson (module RoomGetState))
+
+let room_get_state_event room_id event_type state_key t =
+  logged_in t >>=? fun token ->
+  Api.room_get_state_event token room_id event_type state_key
+  |> send t
+  >>|=? Responses.(of_yojson (module RoomGetStateEvent (struct let m_type = event_type end)))
+
+let room_redact ?reason ?tx_id room_id event_id t =
+  logged_in t >>=? fun token ->
+  tx_id
+  |> Option.value ~default:(Uuid.create_random t.random_state |> Uuid.to_string)
+  |> Api.room_redact ?reason token room_id event_id
+  |> send t
+  >>|=? Responses.(of_yojson (module EventID))
+
+let room_resolve_alias room_alias t =
+  Api.room_resolve_alias room_alias
+  |> send t
+  >>|=? Responses.(of_yojson (module RoomResolveAlias))
+
+let room_create = ()
+
+let join = ()
+
+let room_invite = ()
+
+let room_leave = ()
+
+let room_forget = ()
+
+let room_kick = ()
+
+let room_ban = ()
+
+let room_unban = ()
+
+let room_context = ()
+
+let room_messages ?stop ?dir ?(limit=10) ?filter id start t =
+  logged_in t >>=? fun token ->
+  Api.room_messages ?stop ?dir ~limit ?filter token id start
+  |> send t
+  >>|=? Responses.(of_yojson (module RoomMessages))
+
+let room_typing = ()
+
+let update_receipt_marker = ()
+
+let room_read_markers = ()
+
+let content_repository_config = ()
+
+(* TODO: Add encrypt generation option... *)
+let upload
+    ?(content_type="application/octet-stream")
+    ?filename
+    ?content_len
+    data_provider
+    t
+  =
+  logged_in t >>=? fun token ->
+  Api.upload ?filename token
+  |> send ~content_type ~data_provider ?content_len t
+  >>|=? Responses.(of_yojson (module Upload))
+
+let send_image ?monitor pth room_id t =
+  let provider = create_data_provider ?monitor pth in
+  let filename = Filename.split pth |> snd in
+  let content_type = Filename.split_extension filename
+                     |> snd
+                     |> Option.value ~default:"png"
+                     |> ( ^ ) "image/" in
+  upload ~content_type ~filename provider t >>=? fun { content_uri } ->
+  let open Events.Room in
+  let msg = Message.Image.create ~url:content_uri filename |> Message.image in
+  room_send room_id (Content.Message msg) t
+
+let room_upload ?monitor pth room_id t =
+  let open File_helpers in
+  let provider = create_data_provider ?monitor pth in
+  let filename = Filename.split pth |> snd in
+  let ext = Filename.split_extension filename |> snd in
+  let content_type = Ext.to_content_type ext in
+  upload ~content_type ~filename provider t >>=? fun { content_uri } ->
+  let msg = (Ext.to_msg_create ext) ~url:content_uri filename in
+  room_send room_id (Events.Room.Content.Message msg) t
+
+let download = ()
+
+let thumbnail = ()
+
+let get_profile = ()
+
+let get_presence = ()
+
+let set_presence = ()
+
+let get_displayname = ()
+
+let set_displayname = ()
+
+let get_avatar = ()
+
+let set_avatar = ()
+
+let upload_filter = ()
