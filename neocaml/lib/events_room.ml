@@ -1,4 +1,4 @@
-open Base
+open Core
 open Yojson_helpers
 
 module rec Room : sig
@@ -279,7 +279,7 @@ module rec Room : sig
     val video     : Video.t -> t
     val unknown   : Yojson.Safe.t -> t
 
-    val of_yojson : Yojson.Safe.t -> (t, string) Result.t
+    val of_yojson : Yojson.Safe.t -> (t, string) result
     val to_yojson : t -> Yojson.Safe.t
   end
 
@@ -474,7 +474,7 @@ module rec Room : sig
     val preview_urls       : PreviewUrls.t -> t
 
     val to_m_type : t -> string
-    val of_yojson : String.t -> Yojson.Safe.t -> (t, String.t) Result.t
+    val of_yojson : string -> Yojson.Safe.t -> (t, string) result
     val to_yojson : t -> Yojson.Safe.t
   end
 
@@ -499,7 +499,7 @@ module rec Room : sig
              ; room_id          : string option
              ; state_key        : string option
              }
-    val unsigned_keys : unit -> (String.t, String.comparator_witness) Set.t
+    val unsigned_keys : unit -> (string, String.comparator_witness) Set.t
     val uncommon_keys : unit -> string list
     include DerivingYojson with type t := t
   end
@@ -508,7 +508,7 @@ module rec Room : sig
 
   val extra_unsigned : Yojson.Safe.t -> Yojson.Safe.t
   val uncommon_unsigned : Yojson.Safe.t -> Yojson.Safe.t
-  val of_yojson : Yojson.Safe.t -> (t, String.t) Result.t
+  val of_yojson : Yojson.Safe.t -> (t, string) result
   val to_yojson : t -> Yojson.Safe.t
 end = struct
   (* HACK: This enables use of to_yojson with optional default values. From what
