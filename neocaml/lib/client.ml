@@ -39,8 +39,6 @@ let response_code = Response.status >> Code.code_of_status
 
 let body_of_json j = j |> Yojson.Safe.to_string |> Cohttp_lwt.Body.of_string
 
-let json_of_body b = b |> Cohttp_lwt.Body.to_string >|= Yojson.Safe.from_string
-
 let read_chunk ?(sz=1024) (monitor : Monitor.t) fd () =
   let buffer = Bytes.create sz in
   Lwt_unix.read fd buffer 0 sz >|= function
@@ -116,10 +114,20 @@ let send
   let body = Option.map ~f:body_of_json content in
   let get_data = Option.value ~default:(fun () -> Lwt.return body) data_provider in
   let call = Client.call ?ctx ?chunked:None ~headers in
-  repeat ?timeout ~call ~get_data meth uri
-  >>=? fun (_resp, body) ->
-  Cohttp_lwt.Body.to_string body
-  >>= ( Yojson.Safe.from_string >> Lwt.return_ok )
+  repeat ?timeout ~call ~get_data meth uri >>=? fun (resp, body) ->
+  Cohttp_lwt.Body.to_string body           >>= fun body_str ->
+  (* TODO: Packing bytes into a json right now to keep the return type the same
+   * but I feel it's a pretty gross solution. I guess I should do json conversion
+   * in each client function, rather than in here so that I can avoid this...
+   * Or change from Response of json to "of_string"? *)
+  Cohttp.Header.get_media_type resp.headers |> function
+  | Some "application/json" ->
+    body_str
+    |> Yojson_helpers.yojson_of_string
+    |> Result.map_error ~f:(fun s -> `JsonBodyErr s)
+    |> Lwt_result.lift
+  | Some s -> Lwt.return_ok (`Assoc [("media_type", `String s); ("bytes", `String body_str)])
+  | _      -> Lwt_result.fail `UnknownBodyType
 
 let login ?device_name cred t =
   Api.login ?device_name ?device_id:t.device_id t.user cred
@@ -310,7 +318,11 @@ let room_upload ?monitor pth room_id t =
   let msg = (Ext.to_msg_create ext) ~url:content_uri filename in
   room_send room_id (Events.Room.Content.Message msg) t
 
-let download = ()
+let download ?filename ?allow_remote server_name media_id t =
+  (* TODO: check the content-disposition header for file name if not providing
+   * one. If it is given, then it should be whatever that was. *)
+  Api.download ?filename ?allow_remote server_name media_id
+  |> send t
 
 let thumbnail = ()
 

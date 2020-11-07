@@ -10,6 +10,10 @@ let yo_int i     : Yojson.Safe.t = `Int i
 let yo_bool b    : Yojson.Safe.t = `Bool b
 let yo_list yo l : Yojson.Safe.t = `List (List.map ~f:yo l)
 
+let yojson_of_string s =
+  try Yojson.Safe.from_string s |> Result.return
+  with Yojson.Json_error e -> Result.fail e
+
 let json_of_option con opt : Yojson.Safe.t =
   Option.value_map ~f:con ~default:`Null opt
 

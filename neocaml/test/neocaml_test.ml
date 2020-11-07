@@ -2,6 +2,8 @@ open Core
 open Neocaml
 open Neocaml.Neo_infix
 
+let unix_login = Unix.getlogin ()
+
 let client = Client.create "https://shakeandwake.xyz" "@test_user:matrix.shakeandwake.xyz"
 
 (* For simple relative pathing from the running directory, which for this module
@@ -14,7 +16,7 @@ let up_dir ?(n=1) pth =
   |> fun s -> s ^ "/"
 
 let logged =
-  let pass = "/home/" ^ Unix.getlogin () ^ "/.secrets/neocaml/pass.json"
+  let pass = "/home/" ^ unix_login ^ "/.secrets/neocaml/pass.json"
              |> Yojson.Safe.from_file
              |> Yojson.Safe.Util.member "password"
              |> Yojson.Safe.Util.to_string in
@@ -55,12 +57,31 @@ let send_notice () =
   let content = Message.Notice.create "You're on notice!" |> Message.notice in
   logged >>=? Client.room_send room_id (Content.Message content)
 
-let img_pth = "/home/" ^ Unix.getlogin () ^ "/Pictures/emojis/bigben.png"
+let img_pth = "/home/" ^ unix_login ^ "/Pictures/emojis/bigben.png"
 let send_image () =
   let monitor = Monitor.stdout_bar () in
   logged >>=? Client.send_image ~monitor img_pth room_id
 
-let webm_pth = "/home/" ^ Unix.getlogin () ^ "/Videos/webms/chad_wants_two.webm"
+let webm_pth = "/home/" ^ unix_login ^ "/Videos/webms/chad_wants_two.webm"
 let send_webm () =
   let monitor = Monitor.stdout_bar () in
   logged >>=? Client.room_upload ~monitor webm_pth room_id
+
+(* TODO: This works, but need to build a clean version of this logic into the
+ * download function itself. *)
+let download () =
+  let filename = "test_dl.png" in
+  let pth = "/home/" ^ unix_login ^ "/Downloads/" ^ filename in
+  logged >>=?
+  Client.download ~filename "matrix.shakeandwake.xyz" "OaFEMquVeRvPVnHuFSNseUOQ"
+  >>=? fun j ->
+  Yojson.Safe.Util.member "bytes" j
+  |> Yojson_helpers.string_of_yojson
+  |> Result.map_error ~f:(fun s -> `JsonBodyErr s)
+  (* TODO: Just add a variant constructor to this function... *)
+  |> Lwt_result.lift
+  >>=? fun bs ->
+  let oc = Out_channel.create pth in
+  fprintf oc "%s\n" bs;
+  Out_channel.close oc;
+  Lwt_result.return ()
