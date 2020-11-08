@@ -67,21 +67,19 @@ let send_webm () =
   let monitor = Monitor.stdout_bar () in
   logged >>=? Client.room_upload ~monitor webm_pth room_id
 
-(* TODO: This works, but need to build a clean version of this logic into the
- * download function itself. *)
-let download () =
-  let filename = "test_dl.png" in
-  let pth = "/home/" ^ unix_login ^ "/Downloads/" ^ filename in
+let download_and_save () =
+  let pth = "/home/" ^ unix_login ^ "/Downloads/" in
   logged >>=?
-  Client.download ~filename "matrix.shakeandwake.xyz" "OaFEMquVeRvPVnHuFSNseUOQ"
-  >>=? fun j ->
-  Yojson.Safe.Util.member "bytes" j
-  |> Yojson_helpers.string_of_yojson
-  |> Result.map_error ~f:(fun s -> `JsonBodyErr s)
-  (* TODO: Just add a variant constructor to this function... *)
-  |> Lwt_result.lift
-  >>=? fun bs ->
-  let oc = Out_channel.create pth in
-  fprintf oc "%s\n" bs;
-  Out_channel.close oc;
-  Lwt_result.return ()
+  Client.download "matrix.shakeandwake.xyz" "OaFEMquVeRvPVnHuFSNseUOQ" >>|? fun file ->
+  Types.DownloadedFile.save file pth
+
+let thumbnail_and_save () =
+  let pth = "/home/" ^ unix_login ^ "/Downloads/" in
+  logged >>=?
+  Client.thumbnail
+    ~resize:Types.Resize.Crop
+    "matrix.shakeandwake.xyz"
+    "OaFEMquVeRvPVnHuFSNseUOQ"
+    ~w:50 ~h:50
+  >>|? fun file ->
+  Types.DownloadedFile.save ~filename:"thumbnail.png" file pth
