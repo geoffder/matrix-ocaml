@@ -297,32 +297,32 @@ let download ?filename ?(allow_remote=true) server_name media_id =
             |> Printf.sprintf "download/%s/%s%s" server_name media_id in
   (`GET, build_path ~queries ~api_path:matrix_media_path pth, None)
 
-let thumbnail ?(allow_remote=true) server_name media_id width height resize =
+let thumbnail ?(allow_remote=true) server_name media_id ~w ~h resize =
   let queries =
-    query "width" (Int.to_string width)
-    @ query "height" (Int.to_string height)
+    query "width" (Int.to_string w)
+    @ query "height" (Int.to_string h)
     @ query "method" (Resize.to_string resize)
     @ query "allow_remote" (Bool.to_string allow_remote) in
   let pth = "thumbnail" // server_name // media_id in
   (`GET, build_path ~queries ~api_path:matrix_media_path pth, None)
 
-let profile_get user_id = (`GET, build_path ("profile" // user_id), None)
+let get_profile user_id = (`GET, build_path ("profile" // user_id), None)
 
-let profile_get_displayname user_id =
+let get_display_name user_id =
   let pth = "profile" // user_id // "displayname" in
   (`GET, build_path pth, None)
 
-let profile_set_displayname access user_id display_name =
+let set_display_name access user_id display_name =
   let queries = query "access_token" access in
   let content = yo_assoc [ ("displayname", yo_string display_name) ] in
   let pth = "profile" // user_id // "displayname" in
   (`PUT, build_path ~queries pth, Some content)
 
-let profile_get_avatar user_id =
+let get_avatar user_id =
   let pth = "profile" // user_id // "avatar_url" in
   (`GET, build_path pth, None)
 
-let profile_set_avatar access user_id avatar_url =
+let set_avatar access user_id avatar_url =
   let queries = query "access_token" access in
   (* NOTE: Note sure if appropriate to Uri encode here... *)
   let content =
