@@ -39,6 +39,11 @@ let response_code = Response.status >> Code.code_of_status
 
 let body_of_json j = j |> Yojson.Safe.to_string |> Cohttp_lwt.Body.of_string
 
+let cohttp_response_to_yojson (_, body) =
+  Cohttp_lwt.Body.to_string body >>= fun str ->
+  Yojson_helpers.yojson_of_string str
+  |> Lwt_result.lift
+
 let read_chunk ?(sz=1024) (monitor : Monitor.t) fd () =
   let buffer = Bytes.create sz in
   Lwt_unix.read fd buffer 0 sz >|= function
@@ -61,6 +66,11 @@ let logged_in t =
   t.access_token
   |> Option.value_map ~f:Lwt.return_ok
     ~default:(Lwt.return_error `NotLoggedIn)
+
+let user_id t =
+  t.user_id
+  |> Option.value_map ~f:Lwt.return_ok
+    ~default:(Lwt.return_error `NoUserID)
 
 let with_timeout ?timeout ~call uri =
   let times_up =
@@ -110,29 +120,16 @@ let send
       ~default:[]
       content_len
     |> Header.of_list in
-  let uri = complete_uri t pth in
-  let body = Option.map ~f:body_of_json content in
+  let uri      = complete_uri t pth in
+  let body     = Option.map ~f:body_of_json content in
   let get_data = Option.value ~default:(fun () -> Lwt.return body) data_provider in
-  let call = Client.call ?ctx ?chunked:None ~headers in
-  repeat ?timeout ~call ~get_data meth uri >>=? fun (resp, body) ->
-  Cohttp_lwt.Body.to_string body           >>= fun body_str ->
-  (* TODO: Packing bytes into a json right now to keep the return type the same
-   * but I feel it's a pretty gross solution. I guess I should do json conversion
-   * in each client function, rather than in here so that I can avoid this...
-   * Or change from Response of json to "of_string"? *)
-  Cohttp.Header.get_media_type resp.headers |> function
-  | Some "application/json" ->
-    body_str
-    |> Yojson_helpers.yojson_of_string
-    |> Result.map_error ~f:(fun s -> `JsonBodyErr s)
-    |> Lwt_result.lift
-  | Some s -> Lwt.return_ok (`Assoc [("media_type", `String s); ("bytes", `String body_str)])
-  | _      -> Lwt_result.fail `UnknownBodyType
+  let call     = Client.call ?ctx ?chunked:None ~headers in
+  repeat ?timeout ~call ~get_data meth uri
 
 let login ?device_name cred t =
   Api.login ?device_name ?device_id:t.device_id t.user cred
-  |> send t
-  >>|? fun j ->
+  |> send t >>=?
+  cohttp_response_to_yojson >>|? fun j ->
   let open Yojson.Safe.Util in
   { t with
     user_id      = j |> member "user_id" |> to_string_option
@@ -143,35 +140,40 @@ let login ?device_name cred t =
 let logout ?(all_devices=false) t =
   logged_in t >>=? fun token ->
   Api.logout ~all_devices token
-  |> send t
-  >>|? fun _ -> { t with access_token = None }
+  |> send t >>=?
+  cohttp_response_to_yojson >>|? fun _ ->
+  { t with access_token = None }
 
 let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence t =
   logged_in t >>=? fun token ->
   Api.sync ?since ?timeout ?filter ~full_state ?set_presence token
-  |> send t
-  >>|=? Responses.(of_yojson Sync.of_yojson)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson Sync.of_yojson)
 
 let keys_query users t =
   logged_in t >>=? fun token ->
   if List.length users > 0 then
     Api.keys_query token (Set.of_list (module String) users)
-    |> send t
-    >>|=? Responses.(of_yojson KeysQuery.of_yojson)
+    |> send t >>=?
+    cohttp_response_to_yojson >>|=?
+    Responses.(of_yojson KeysQuery.of_yojson)
   else Lwt_result.fail `NoKeyQueryRequired
 
 let devices t =
   logged_in t >>=? fun token ->
   Api.devices token
-  |> send t
-  >>|=? Responses.(of_yojson Devices.of_yojson)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson Devices.of_yojson)
 
 let update_device device_id display_name t =
   logged_in t >>=? fun token ->
   `Assoc [ ("display_name", `String display_name) ]
   |> Api.update_device token device_id
-  |> send t
-  >>|=? Responses.(of_yojson UpdateDevice.of_yojson)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson UpdateDevice.of_yojson)
 
 let delete_devices ?cred devices t =
   logged_in t >>=? fun token ->
@@ -186,20 +188,23 @@ let delete_devices ?cred devices t =
     ))
   in
   Api.delete_devices ?auth token devices
-  |> send t
-  >>|=? Responses.(of_yojson DeleteDevices.of_yojson)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson DeleteDevices.of_yojson)
 
 let joined_members room_id t =
   logged_in t >>=? fun token ->
   Api.joined_members token room_id
-  |> send t
-  >>|=? Responses.(of_yojson JoinedMembers.of_yojson)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson JoinedMembers.of_yojson)
 
 let joined_rooms t =
   logged_in t >>=? fun token ->
   Api.joined_rooms token
-  |> send t
-  >>|=? Responses.(of_yojson JoinedRooms.of_yojson)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson JoinedRooms.of_yojson)
 
 (* TODO: Handling encryption. *)
 let room_send ?tx_id id event t =
@@ -209,47 +214,54 @@ let room_send ?tx_id id event t =
   tx_id
   |> Option.value ~default:(Uuid.create_random t.random_state |> Uuid.to_string)
   |> Api.room_send token id m_type body
-  |> send t
-  >>|=? Responses.(of_yojson EventID.of_yojson)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson EventID.of_yojson)
 
 let room_get_event room_id event_id t =
   logged_in t >>=? fun token ->
   Api.room_get_event token room_id event_id
-  |> send t
-  >>|=? Responses.of_yojson Events.Room.of_yojson
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.of_yojson Events.Room.of_yojson
 
 let room_put_state ?state_key room_id event t =
   logged_in t >>=? fun token ->
   let body   = Events.Room.Content.to_yojson event in
   let m_type = Events.Room.Content.to_m_type event in
   Api.room_put_state ?state_key token room_id m_type body
-  |> send t
-  >>|=? Responses.(of_yojson EventID.of_yojson)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson EventID.of_yojson)
 
 let room_get_state room_id t =
   logged_in t >>=? fun token ->
   Api.room_get_state token room_id
-  |> send t
-  >>|=? Responses.(of_yojson RoomGetState.of_yojson)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomGetState.of_yojson)
 
 let room_get_state_event room_id event_type state_key t =
   logged_in t >>=? fun token ->
   Api.room_get_state_event token room_id event_type state_key
-  |> send t
-  >>|=? Responses.of_yojson (Events.Room.Content.of_yojson event_type)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.of_yojson (Events.Room.Content.of_yojson event_type)
 
 let room_redact ?reason ?tx_id room_id event_id t =
   logged_in t >>=? fun token ->
   tx_id
   |> Option.value ~default:(Uuid.create_random t.random_state |> Uuid.to_string)
   |> Api.room_redact ?reason token room_id event_id
-  |> send t
-  >>|=? Responses.(of_yojson EventID.of_yojson)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson EventID.of_yojson)
 
 let room_resolve_alias room_alias t =
   Api.room_resolve_alias room_alias
-  |> send t
-  >>|=? Responses.(of_yojson RoomResolveAlias.of_yojson)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomResolveAlias.of_yojson)
 
 let room_create = ()
 
@@ -272,8 +284,9 @@ let room_context = ()
 let room_messages ?stop ?dir ?(limit=10) ?filter id start t =
   logged_in t >>=? fun token ->
   Api.room_messages ?stop ?dir ~limit ?filter token id start
-  |> send t
-  >>|=? Responses.(of_yojson RoomMessages.of_yojson)
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomMessages.of_yojson)
 
 let room_typing = ()
 
@@ -293,8 +306,9 @@ let upload
   =
   logged_in t >>=? fun token ->
   Api.upload ?filename token
-  |> send ~content_type ~data_provider ?content_len t
-  >>|=? Responses.(of_yojson Upload.of_yojson)
+  |> send ~content_type ~data_provider ?content_len t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson Upload.of_yojson)
 
 let send_image ?monitor pth room_id t =
   let provider = create_data_provider ?monitor pth in
@@ -319,25 +333,72 @@ let room_upload ?monitor pth room_id t =
   room_send room_id (Events.Room.Content.Message msg) t
 
 let download ?filename ?allow_remote server_name media_id t =
-  (* TODO: check the content-disposition header for file name if not providing
-   * one. If it is given, then it should be whatever that was. *)
   Api.download ?filename ?allow_remote server_name media_id
-  |> send t
+  |> send t >>=?
+  Types.DownloadedFile.of_cohttp_response
 
-let thumbnail = ()
+let thumbnail ?resize ?allow_remote server_name media_id ~w ~h t =
+  let resize = Option.value ~default:Types.Resize.Scale resize in
+  Api.thumbnail ?allow_remote server_name media_id ~w ~h resize
+  |> send t >>=?
+  Types.DownloadedFile.of_cohttp_response
 
-let get_profile = ()
+let get_profile ?user_id t =
+  Option.first_some user_id t.user_id |> function
+  | None    -> Lwt_result.fail `NoUserID
+  | Some id ->
+    Api.get_profile id
+    |> send t >>=?
+    cohttp_response_to_yojson >>|=?
+    Responses.(of_yojson GetProfile.of_yojson)
 
-let get_presence = ()
+let get_presence user_id t =
+  logged_in t >>=? fun token ->
+  Api.get_presence token user_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson GetPresence.of_yojson)
 
-let set_presence = ()
+let set_presence ?status_msg presence t =
+  logged_in t >>=? fun token ->
+  user_id t   >>=? fun id ->
+  Api.set_presence ?status_msg token id presence
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson SetPresence.of_yojson)
 
-let get_displayname = ()
+let get_display_name ?user_id t =
+  Option.first_some user_id t.user_id |> function
+  | None    -> Lwt_result.fail `NoUserID
+  | Some id ->
+    Api.get_display_name id
+    |> send t >>=?
+    cohttp_response_to_yojson >>|=?
+    Responses.(of_yojson GetDisplayName.of_yojson)
 
-let set_displayname = ()
+let set_display_name display_name t =
+  logged_in t >>=? fun token ->
+  user_id t   >>=? fun id ->
+  Api.set_display_name token id display_name
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson SetDisplayName.of_yojson)
 
-let get_avatar = ()
+let get_avatar ?user_id t =
+  Option.first_some user_id t.user_id |> function
+  | None    -> Lwt_result.fail `NoUserID
+  | Some id ->
+    Api.get_avatar id
+    |> send t >>=?
+    cohttp_response_to_yojson >>|=?
+    Responses.(of_yojson GetAvatar.of_yojson)
 
-let set_avatar = ()
+let set_avatar avatar_url t =
+  logged_in t >>=? fun token ->
+  user_id t   >>=? fun id ->
+  Api.set_avatar token id avatar_url
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson SetAvatar.of_yojson)
 
 let upload_filter = ()
