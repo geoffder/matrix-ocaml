@@ -2,6 +2,7 @@
  (name neocaml)
  (libraries core
             core_kernel.uuid
+            str
             lwt
             cohttp-lwt-unix
             yojson
