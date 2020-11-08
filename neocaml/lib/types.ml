@@ -11,7 +11,6 @@ module Resize = struct
 end
 
 module Presence = struct
-  (* Do I bother making an invalid case? *)
   type t = Offline | Online | Unavailable
 
   let to_string = function
@@ -39,6 +38,8 @@ module DownloadedFile = struct
            ; bytes    : string
            }
 
+  let disposition_regex = Str.regexp ".*filename="
+
   let of_cohttp_response ?filename (resp, body) =
     let open Lwt in
     Cohttp_lwt.Body.to_string body >>= fun bytes ->
@@ -47,14 +48,15 @@ module DownloadedFile = struct
       | Some n -> n
       | None   ->
         Cohttp.Header.get resp.Cohttp.Response.headers "Content-Disposition"
+        |> Option.map ~f:(Str.replace_first disposition_regex "")
         |> Option.value ~default:"neo_download"
     in
     let mimetype = Cohttp.Header.get_media_type resp.headers in
     Lwt.return_ok { name; mimetype; bytes }
 
-  let save t path =
-    (* TODO: Use proper path concactentation function. *)
-    let oc = Out_channel.create (path ^ t.name) in
+  let save ?filename t path =
+    let name = Option.value ~default:t.name filename in
+    let oc   = Out_channel.create (Filename.concat path name) in
     fprintf oc "%s\n" t.bytes;
     Out_channel.close oc
 end
