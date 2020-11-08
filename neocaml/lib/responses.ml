@@ -97,6 +97,32 @@ module RoomResolveAlias = struct
            } [@@deriving of_yojson]
 end
 
+module GetProfile = struct
+  type t = { avatar_url   : string
+           ; display_name : string
+           } [@@deriving of_yojson]
+end
+
+module GetPresence = struct
+  type t = { presence        : Types.Presence.t
+           ; last_active_ago : int
+           } [@@deriving of_yojson]
+end
+
+module SetPresence = Empty (struct let fail = "Could not set presence." end)
+
+module GetDisplayName = struct
+  type t = { display_name : string } [@@deriving of_yojson]
+end
+
+module SetDisplayName = Empty (struct let fail = "Could not set display name." end)
+
+module GetAvatar = struct
+  type t = { avatar_url : string } [@@deriving of_yojson]
+end
+
+module SetAvatar = Empty (struct let fail = "Could not set avatar url." end)
+
 (* TODO: Add an additional authentication required response (interactive
  * authentication API support) *)
 
