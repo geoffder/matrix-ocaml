@@ -12,7 +12,7 @@ let yo_list yo l : Yojson.Safe.t = `List (List.map ~f:yo l)
 
 let yojson_of_string s =
   try Yojson.Safe.from_string s |> Result.return
-  with Yojson.Json_error e -> Result.fail e
+  with Yojson.Json_error e -> Result.fail (`InvalidJson e)
 
 let json_of_option con opt : Yojson.Safe.t =
   Option.value_map ~f:con ~default:`Null opt
