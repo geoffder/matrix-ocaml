@@ -1,4 +1,4 @@
-open Base
+open Core
 
 module Credential = struct
   type t = Password of string | AuthToken of string
@@ -31,4 +31,30 @@ module MessageDirection = struct
   type t = Back | Forward
 
   let to_string = function | Back -> "b" | Forward -> "f"
+end
+
+module DownloadedFile = struct
+  type t = { name     : string
+           ; mimetype : string option
+           ; bytes    : string
+           }
+
+  let of_cohttp_response ?filename (resp, body) =
+    let open Lwt in
+    Cohttp_lwt.Body.to_string body >>= fun bytes ->
+    let name =
+      match filename with
+      | Some n -> n
+      | None   ->
+        Cohttp.Header.get resp.Cohttp.Response.headers "Content-Disposition"
+        |> Option.value ~default:"neo_download"
+    in
+    let mimetype = Cohttp.Header.get_media_type resp.headers in
+    Lwt.return_ok { name; mimetype; bytes }
+
+  let save t path =
+    (* TODO: Use proper path concactentation function. *)
+    let oc = Out_channel.create (path ^ t.name) in
+    fprintf oc "%s\n" t.bytes;
+    Out_channel.close oc
 end
