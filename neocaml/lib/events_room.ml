@@ -514,12 +514,6 @@ module rec Room : sig
   val of_yojson : Yojson.Safe.t -> (t, string) result
   val to_yojson : t -> Yojson.Safe.t
 end = struct
-  (* HACK: This enables use of to_yojson with optional default values. From what
-   * I understand, this might be fixed in the next release of
-   * ppx_deriving_yojson, try removing when the changes hit opam. Link to
-   * relevant issue: __ *)
-  let ( = ) = Stdlib.( = )
-
   module EncryptedFile = struct
     type json_web_key = { kty     : string
                         ; key_ops : string list
