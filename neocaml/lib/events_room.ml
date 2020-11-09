@@ -267,6 +267,7 @@ module rec Room : sig
       | Audio of Audio.t
       | Location of Location.t
       | Video of Video.t
+      | Redacted
       | Unknown of Yojson.Safe.t
 
     val text      : Text.t -> t
@@ -383,11 +384,6 @@ module rec Room : sig
     include DerivingYojson with type t := t
   end
 
-  module Redaction : sig
-    type t = { reason : string option; }
-    include DerivingYojson with type t := t
-  end
-
   module Encrypted : sig
     type ciphertext_info = { body : string option
                            ; olm_type : int option
@@ -428,6 +424,11 @@ module rec Room : sig
 
   module PreviewUrls : sig
     type t = { disable : bool; }
+    include DerivingYojson with type t := t
+  end
+
+  module Redaction : sig
+    type t = { reason : string option }
     include DerivingYojson with type t := t
   end
 
@@ -486,7 +487,8 @@ module rec Room : sig
 
   module Common : sig
     type unsigned = { age              : int option
-                    ; redacted_because : string option
+                    ; redacted_by      : string option
+                    ; redacted_because : Room.t option
                     ; transaction_id   : string option
                     ; replaces_state   : string option
                     ; prev_sender      : string option
@@ -495,6 +497,7 @@ module rec Room : sig
              ; event_id         : string
              ; sender           : string
              ; origin_server_ts : int
+             ; redacts          : string option
              ; unsigned         : unsigned option
              ; room_id          : string option
              ; state_key        : string option
@@ -806,6 +809,7 @@ end = struct
       | Audio of Audio.t
       | Location of Location.t
       | Video of Video.t
+      | Redacted
       | Unknown of Yojson.Safe.t
 
     let text m     = Text m
@@ -821,19 +825,17 @@ end = struct
     let of_yojson content =
       U.member "msgtype" content
       |> U.to_string_option
-      |> Option.map ~f:begin
-        function
-        | "m.text"     -> Text.of_yojson content     |> Result.map ~f:text
-        | "m.emote"    -> Emote.of_yojson content    |> Result.map ~f:emote
-        | "m.notice"   -> Notice.of_yojson content   |> Result.map ~f:notice
-        | "m.image"    -> Image.of_yojson content    |> Result.map ~f:image
-        | "m.file"     -> File.of_yojson content     |> Result.map ~f:file
-        | "m.audio"    -> Audio.of_yojson content    |> Result.map ~f:audio
-        | "m.location" -> Location.of_yojson content |> Result.map ~f:location
-        | "m.video"    -> Video.of_yojson content    |> Result.map ~f:video
-        | _            -> Result.return content      |> Result.map ~f:unknown
-      end
-      |> Option.value ~default:(Result.fail "Missing msgtype.")
+      |> function
+      | Some "m.text"     -> Text.of_yojson content     |> Result.map ~f:text
+      | Some "m.emote"    -> Emote.of_yojson content    |> Result.map ~f:emote
+      | Some "m.notice"   -> Notice.of_yojson content   |> Result.map ~f:notice
+      | Some "m.image"    -> Image.of_yojson content    |> Result.map ~f:image
+      | Some "m.file"     -> File.of_yojson content     |> Result.map ~f:file
+      | Some "m.audio"    -> Audio.of_yojson content    |> Result.map ~f:audio
+      | Some "m.location" -> Location.of_yojson content |> Result.map ~f:location
+      | Some "m.video"    -> Video.of_yojson content    |> Result.map ~f:video
+      | Some _            -> Result.return content      |> Result.map ~f:unknown
+      | None              -> Result.return Redacted
 
     let to_yojson = function
       | Text     c -> Text.to_yojson c
@@ -844,6 +846,7 @@ end = struct
       | Audio    c -> Audio.to_yojson c
       | Location c -> Location.to_yojson c
       | Video    c -> Video.to_yojson c
+      | Redacted   -> `Assoc []
       | Unknown  j -> j
   end
 
@@ -938,13 +941,13 @@ end = struct
                   ; signed       : signed
                   } [@@deriving yojson]
 
-    type t = { avatar_url         : string option        [@default None]
-             ; displayname        : string option        [@default None]
-             ; inviter            : string option        [@default None]
+    type t = { avatar_url         : string option             [@default None]
+             ; displayname        : string option             [@default None]
+             ; inviter            : string option             [@default None]
              ; membership         : membership
-             ; is_direct          : bool option          [@default None]
-             ; third_party_invite : invite option        [@default None]
-             ; invite_room_state  : Room.t list option   [@default None]
+             ; is_direct          : bool option               [@default None]
+             ; third_party_invite : invite option             [@default None]
+             ; invite_room_state  : Room.t list option [@default None]
     (* ; invite_room_state  : Yojson.Safe.t *)
              } [@@deriving yojson]
   end
@@ -1198,16 +1201,18 @@ end = struct
     )
 
   module Common = struct
-    (* NOTE: redacted_because amd transaction_id seem to be common for room/timeline
+    (* NOTE: redacted_because and transaction_id seem to be common for room/timeline
      * events, though they aren't the only possible optional fields. *)
-    type unsigned = { age              : int option    [@default None]
-                    ; redacted_because : string option [@default None]
-                    ; transaction_id   : string option [@default None]
-                    ; replaces_state   : string option [@default None]
-                    ; prev_sender      : string option [@default None]
+    type unsigned = { age              : int option           [@default None]
+                    ; redacted_by      : string option        [@default None]
+                    ; redacted_because : Room.t option [@default None]
+                    ; transaction_id   : string option        [@default None]
+                    ; replaces_state   : string option        [@default None]
+                    ; prev_sender      : string option        [@default None]
                     } [@@deriving yojson { strict = false }]
 
     let unsigned_keys () = [ "age"
+                           ; "redacted_by"
                            ; "redacted_because"
                            ; "transaction_id"
                            ; "replaces_state"
@@ -1224,6 +1229,7 @@ end = struct
              ; event_id         : string
              ; sender           : string
              ; origin_server_ts : int
+             ; redacts          : string option   [@default None]
              ; unsigned         : unsigned option [@default None]
              ; room_id          : string option   [@default None]
              ; state_key        : string option   [@default None]
