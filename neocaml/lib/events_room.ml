@@ -354,7 +354,7 @@ module rec Room : sig
   end
 
   module PowerLevels : sig
-    type notifications = { room : int option; }
+    type notifications = { room : int option }
     type int_string_map = int StringMap.t
     type t = { ban            : int option
              ; events         : int_string_map option

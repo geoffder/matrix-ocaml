@@ -263,23 +263,68 @@ let room_resolve_alias room_alias t =
   cohttp_response_to_yojson >>|=?
   Responses.(of_yojson RoomResolveAlias.of_yojson)
 
-let room_create = ()
+let room_create ?invite ?initial_state ?power_override config t =
+  logged_in t >>=? fun token ->
+  Api.room_create ?invite ?initial_state ?power_override token config
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomCreate.of_yojson)
 
-let join = ()
+let join room_id t =
+  logged_in t >>=? fun token ->
+  Api.join token room_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson Join.of_yojson)
 
-let room_invite = ()
+let room_invite room_id user_id t =
+  logged_in t >>=? fun token ->
+  Api.room_invite token room_id user_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomInvite.of_yojson)
 
-let room_leave = ()
+let room_leave room_id t =
+  logged_in t >>=? fun token ->
+  Api.room_leave token room_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomLeave.of_yojson)
 
-let room_forget = ()
+let room_forget room_id t =
+  logged_in t >>=? fun token ->
+  Api.room_forget token room_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomForget.of_yojson)
 
-let room_kick = ()
+let room_kick ?reason room_id user_id t =
+  logged_in t >>=? fun token ->
+  Api.room_kick ?reason token room_id user_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomKick.of_yojson)
 
-let room_ban = ()
+let room_ban ?reason room_id user_id t =
+  logged_in t >>=? fun token ->
+  Api.room_ban ?reason token room_id user_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomBan.of_yojson)
 
-let room_unban = ()
+let room_unban room_id user_id t =
+  logged_in t >>=? fun token ->
+  Api.room_unban token room_id user_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomUnban.of_yojson)
 
-let room_context = ()
+let room_context ?limit room_id event_id t =
+  logged_in t >>=? fun token ->
+  Api.room_context ?limit token room_id event_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomContext.of_yojson)
 
 let room_messages ?stop ?dir ?(limit=10) ?filter id start t =
   logged_in t >>=? fun token ->
@@ -288,13 +333,34 @@ let room_messages ?stop ?dir ?(limit=10) ?filter id start t =
   cohttp_response_to_yojson >>|=?
   Responses.(of_yojson RoomMessages.of_yojson)
 
-let room_typing = ()
+let room_typing ?typing ?timeout room_id t =
+  logged_in t >>=? fun token ->
+  user_id t   >>=? fun id ->
+  Api.room_typing ?typing ?timeout token room_id id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomTyping.of_yojson)
 
-let update_receipt_marker = ()
+let update_receipt_marker ?receipt_type room_id event_id t =
+  logged_in t >>=? fun token ->
+  Api.update_receipt_marker ?receipt_type token room_id event_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson UpdateReceiptMarker.of_yojson)
 
-let room_read_markers = ()
+let room_read_markers ?read_event_id room_id fully_read_event_id t =
+  logged_in t >>=? fun token ->
+  Api.room_read_markers ?read_event_id token room_id fully_read_event_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson RoomReadMarkers.of_yojson)
 
-let content_repository_config = ()
+let content_repository_config t =
+  logged_in t >>=? fun token ->
+  Api.content_repository_config token
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson ContentRepositoryConfig.of_yojson)
 
 (* TODO: Add encrypt generation option... *)
 let upload

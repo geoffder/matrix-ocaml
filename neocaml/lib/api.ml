@@ -157,15 +157,16 @@ let room_invite access room_id user_id =
   let pth = "rooms" // room_id // "invite" in
   (`POST, build_path ~queries pth, Some content)
 
-(* NOTE: Invite is just a list of user_id, but initial state and power args
- * are lists of json. Eventually these should probably be record types that
- * are converted into json (either here or in calling method.) *)
 let room_create ?invite ?initial_state ?power_override access config =
   let queries = query "access_token" access in
-  let power = Option.value ~default:`Null power_override in
+  let power = Option.value_map ~default:`Null
+      ~f:Events.Room.PowerLevels.to_yojson
+      power_override
+  in
+  let init = Option.map ~f:(List.map ~f:Events.Room.to_yojson) initial_state in
   let content =
     [ ("invite", json_of_option (yo_list yo_string) invite)
-    ; ("initial_state", json_of_option (yo_list Fn.id) initial_state)
+    ; ("initial_state", json_of_option (yo_list Fn.id) init)
     ; ("power_level_content_override", power)
     ] |> yo_assoc
     |> Yojson.Safe.Util.combine @@ Room.Config.to_yojson config in

@@ -123,6 +123,48 @@ end
 
 module SetAvatar = Empty (struct let fail = "Could not set avatar url." end)
 
+module Join = struct
+  type t = { room_id : string } [@@deriving of_yojson]
+end
+
+module RoomInvite = Empty (struct let fail = "Invite failed." end)
+
+module RoomLeave = Empty (struct let fail = "Failed to leave room." end)
+
+module RoomForget = Empty (struct let fail = "Failed to forget room." end)
+
+module RoomKick = Empty (struct let fail = "Failed to kick user from room." end)
+
+module RoomBan = Empty (struct let fail = "Failed to ban user from room." end)
+
+module RoomUnban = Empty (struct let fail = "Failed to unban user from room." end)
+
+module RoomContext = struct
+  (* TODO: Make sure my naming of these start and end tokens are consistent
+   * with elsewhere. Check other occurences, Sync is one for sure. *)
+  type t = { start_token   : string
+           ; end_token     : string
+           ; events_before : Events.Room.t list
+           ; event         : Events.Room.t
+           ; events_after  : Events.Room.t list
+           ; state         : Events.Room.t list
+           } [@@deriving of_yojson]
+end
+
+module RoomTyping = Empty (struct let fail = "Failed to send typing notification." end)
+
+module UpdateReceiptMarker = Empty (struct let fail = "Failed to send receipt." end)
+
+module RoomReadMarkers = Empty (struct let fail = "Failed to update read markers." end)
+
+module ContentRepositoryConfig = struct
+  type t = { max_upload_size : int [@key "m.upload.size"] } [@@deriving of_yojson]
+end
+
+module RoomCreate = struct
+  type t = { room_id : string } [@@deriving of_yojson]
+end
+
 (* TODO: Add an additional authentication required response (interactive
  * authentication API support) *)
 

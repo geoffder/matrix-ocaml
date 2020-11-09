@@ -32,8 +32,21 @@ module Config = struct
     ; name         : string option [@key "room_alias_name"]
     ; topic        : string option
     ; room_version : string option
-    ; federate     : bool [@key "creation_content"] [@to_yojson federate_to_json]
+    ; federate     : bool          [@key "creation_content"]
     ; preset       : preset option
     ; is_direct    : bool
     } [@@deriving to_yojson]
+
+  let create
+      ?(visibility=Private)
+      ?alias
+      ?name
+      ?topic
+      ?room_version
+      ?(federate=true)
+      ?preset
+      ?(is_direct=false)
+      ()
+    =
+    { visibility; alias; name; topic; room_version; federate; preset; is_direct }
 end
