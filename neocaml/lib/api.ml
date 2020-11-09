@@ -356,4 +356,12 @@ let room_context ?limit access room_id event_id =
   let pth = "rooms" // room_id // "context" // event_id in
   (`GET, build_path ~queries pth, None)
 
-let upload_filter = ()
+let upload_filter access user_id filter =
+  let queries = query "access_token" access in
+  let pth = "user" // user_id // "filter" in
+  (`POST, build_path ~queries pth, Some filter)
+
+let download_filter access user_id filter_id =
+  let queries = query "access_token" access in
+  let pth = "user" // user_id // "filter" // filter_id in
+  (`GET, build_path ~queries pth, None)

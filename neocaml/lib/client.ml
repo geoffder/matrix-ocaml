@@ -467,4 +467,22 @@ let set_avatar avatar_url t =
   cohttp_response_to_yojson >>|=?
   Responses.(of_yojson SetAvatar.of_yojson)
 
-let upload_filter = ()
+let upload_filter ?user_id filter t =
+  logged_in t >>=? fun token ->
+  Option.first_some user_id t.user_id |> function
+  | None    -> Lwt_result.fail `NoUserID
+  | Some id ->
+    Api.upload_filter token id (Filter.to_yojson filter)
+    |> send t >>=?
+    cohttp_response_to_yojson >>|=?
+    Responses.(of_yojson UploadFilter.of_yojson)
+
+let download_filter ?user_id filter_id t =
+  logged_in t >>=? fun token ->
+  Option.first_some user_id t.user_id |> function
+  | None    -> Lwt_result.fail `NoUserID
+  | Some id ->
+    Api.download_filter token id filter_id
+    |> send t >>=?
+    cohttp_response_to_yojson >>|=?
+    Responses.of_yojson Filter.of_yojson

@@ -165,6 +165,10 @@ module RoomCreate = struct
   type t = { room_id : string } [@@deriving of_yojson]
 end
 
+module UploadFilter = struct
+  type t = { filter_id : string }[@@deriving of_yojson]
+end
+
 (* TODO: Add an additional authentication required response (interactive
  * authentication API support) *)
 
