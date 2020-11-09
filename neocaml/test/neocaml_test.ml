@@ -24,6 +24,7 @@ let logged =
 
 let room_id = "!IYzufTUjKQbVlmtONr:matrix.shakeandwake.xyz"
 let prev_batch = ""
+let testing_hello_id = "$TOLR_mzAjC95TNv4E_qKCniD1zyg8EGcVfJRHgNVaoU"
 
 let messages = logged >>=? Client.room_messages room_id prev_batch
 
@@ -32,6 +33,12 @@ let%test "room messages" = Lwt_main.run messages |> Result.is_ok
 let sync_resp = logged >>=? Client.sync
 
 let%test "sync response" = Lwt_main.run sync_resp |> Result.is_ok
+
+let%test "set read markers" =
+  logged >>=?
+  Client.room_read_markers ~read_event_id:testing_hello_id room_id testing_hello_id
+  |> Lwt_main.run
+  |> Result.is_ok
 
 let send_poggers () =
   let open Events.Room in
