@@ -61,7 +61,6 @@ let create_data_provider ?(monitor=Monitor.def) pth () =
   |> Cohttp_lwt.Body.of_stream
   |> Option.some
 
-(* Continue execution of given function if logged in. *)
 let logged_in t =
   t.access_token
   |> Option.value_map ~f:Lwt.return_ok
@@ -126,6 +125,12 @@ let send
   let call     = Client.call ?ctx ?chunked:None ~headers in
   repeat ?timeout ~call ~get_data meth uri
 
+let discovery_info = ()
+
+let login_info = ()
+
+let register = ()
+
 let login ?device_name cred t =
   Api.login ?device_name ?device_id:t.device_id t.user cred
   |> send t >>=?
@@ -150,61 +155,6 @@ let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence t =
   |> send t >>=?
   cohttp_response_to_yojson >>|=?
   Responses.(of_yojson Sync.of_yojson)
-
-let keys_query users t =
-  logged_in t >>=? fun token ->
-  if List.length users > 0 then
-    Api.keys_query token (Set.of_list (module String) users)
-    |> send t >>=?
-    cohttp_response_to_yojson >>|=?
-    Responses.(of_yojson KeysQuery.of_yojson)
-  else Lwt_result.fail `NoKeyQueryRequired
-
-let devices t =
-  logged_in t >>=? fun token ->
-  Api.devices token
-  |> send t >>=?
-  cohttp_response_to_yojson >>|=?
-  Responses.(of_yojson Devices.of_yojson)
-
-let update_device device_id display_name t =
-  logged_in t >>=? fun token ->
-  `Assoc [ ("display_name", `String display_name) ]
-  |> Api.update_device token device_id
-  |> send t >>=?
-  cohttp_response_to_yojson >>|=?
-  Responses.(of_yojson UpdateDevice.of_yojson)
-
-let delete_devices ?cred devices t =
-  logged_in t >>=? fun token ->
-  let auth = Types.Credential.(Option.(cred >>| function
-    | Password s  -> `Assoc [ ("type",     `String "m.login.password")
-                            ; ("user",     `String t.user)
-                            ; ("password", `String s)
-                            ]
-    | AuthToken s -> `Assoc [ ("type",  `String "m.login.token")
-                            ; ("token", `String s)
-                            ]
-    ))
-  in
-  Api.delete_devices ?auth token devices
-  |> send t >>=?
-  cohttp_response_to_yojson >>|=?
-  Responses.(of_yojson DeleteDevices.of_yojson)
-
-let joined_members room_id t =
-  logged_in t >>=? fun token ->
-  Api.joined_members token room_id
-  |> send t >>=?
-  cohttp_response_to_yojson >>|=?
-  Responses.(of_yojson JoinedMembers.of_yojson)
-
-let joined_rooms t =
-  logged_in t >>=? fun token ->
-  Api.joined_rooms token
-  |> send t >>=?
-  cohttp_response_to_yojson >>|=?
-  Responses.(of_yojson JoinedRooms.of_yojson)
 
 (* TODO: Handling encryption. *)
 let room_send ?tx_id id event t =
@@ -332,6 +282,67 @@ let room_messages ?stop ?dir ?(limit=10) ?filter id start t =
   |> send t >>=?
   cohttp_response_to_yojson >>|=?
   Responses.(of_yojson RoomMessages.of_yojson)
+
+let keys_upload = ()
+
+let keys_query users t =
+  logged_in t >>=? fun token ->
+  if List.length users > 0 then
+    Api.keys_query token (Set.of_list (module String) users)
+    |> send t >>=?
+    cohttp_response_to_yojson >>|=?
+    Responses.(of_yojson KeysQuery.of_yojson)
+  else Lwt_result.fail `NoKeyQueryRequired
+
+let keys_claim = ()
+
+let to_device = ()
+
+let devices t =
+  logged_in t >>=? fun token ->
+  Api.devices token
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson Devices.of_yojson)
+
+let update_device device_id display_name t =
+  logged_in t >>=? fun token ->
+  `Assoc [ ("display_name", `String display_name) ]
+  |> Api.update_device token device_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson UpdateDevice.of_yojson)
+
+let delete_devices ?cred devices t =
+  logged_in t >>=? fun token ->
+  let auth = Types.Credential.(Option.(cred >>| function
+    | Password s  -> `Assoc [ ("type",     `String "m.login.password")
+                            ; ("user",     `String t.user)
+                            ; ("password", `String s)
+                            ]
+    | AuthToken s -> `Assoc [ ("type",  `String "m.login.token")
+                            ; ("token", `String s)
+                            ]
+    ))
+  in
+  Api.delete_devices ?auth token devices
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson DeleteDevices.of_yojson)
+
+let joined_members room_id t =
+  logged_in t >>=? fun token ->
+  Api.joined_members token room_id
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson JoinedMembers.of_yojson)
+
+let joined_rooms t =
+  logged_in t >>=? fun token ->
+  Api.joined_rooms token
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson JoinedRooms.of_yojson)
 
 let room_typing ?typing ?timeout room_id t =
   logged_in t >>=? fun token ->

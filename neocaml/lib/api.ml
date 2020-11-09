@@ -64,6 +64,12 @@ let encrypted_mxc_to_plumb ?homeserver mxc key hash iv =
 (* Api call funcs ->
  *  Cohttp.Code.meth * string * Yojson.Safe.t option *)
 
+let discovery_info = ()
+
+let login_info = ()
+
+let register = ()
+
 let login ?device_name ?device_id user cred =
   let credential =
     let open Credential in
