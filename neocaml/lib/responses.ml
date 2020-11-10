@@ -13,6 +13,10 @@ module EventList = struct
   type t = { events : Events.t list } [@@deriving of_yojson]
 end
 
+module ToDeviceList = struct
+  type t = { events : ToDevice.t list } [@@deriving of_yojson]
+end
+
 module StateList = struct
   type t = { events : Events.Room.t list } [@@deriving of_yojson]
 end
@@ -225,8 +229,6 @@ module Sync = struct
   end
 
   module JoinedRooms = struct
-    (* NOTE: Not sure whether to bother with weird fields like msc count below
-     * or just resign to using non-strict everywhere... *)
     type info =
       { summary              : RoomSummary.t option              [@default None]
       ; state                : StateList.t option                [@default None]
@@ -270,14 +272,12 @@ module Sync = struct
   end
 
   module DeviceLists = struct
-    (* NOTE: E2E encryption related *)
     type t = { changed : string list option [@default None]
              ; left    : string list option [@default None]
              } [@@deriving of_yojson]
   end
 
   module OneTimeKeysCount = struct
-    (* NOTE: E2E encryption related *)
     type t = int StringMap.t
 
     let of_yojson = StringMap.of_yojson int_of_yojson
@@ -291,7 +291,7 @@ module Sync = struct
     ; rooms                      : Rooms.t option            [@default None]
     ; presence                   : EventList.t option        [@default None]
     ; account_data               : EventList.t option        [@default None]
-    ; to_device                  : EventList.t option        [@default None]
+    ; to_device                  : ToDeviceList.t option     [@default None]
     ; device_lists               : DeviceLists.t option      [@default None]
     ; device_one_time_keys_count : OneTimeKeysCount.t option [@default None]
     } [@@deriving of_yojson { strict = false }]
