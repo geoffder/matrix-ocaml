@@ -4,12 +4,12 @@ open Yojson_helpers
 module NewDevice = struct
   type content = { device_id : string
                  ; rooms     : string list
-                 } [@@deriving of_yojson]
+                 } [@@deriving yojson]
 
   type t = { m_type  : string [@key "type"]
            ; sender  : string
            ; content : content
-           } [@@deriving of_yojson]
+           } [@@deriving yojson]
 end
 
 module KeyInfo = struct
@@ -196,12 +196,19 @@ module KeyVerification = struct
     | "key"                 -> Key.of_yojson c       >>| key
     | "mac"                 -> Mac.of_yojson c       >>| mac
     | m                     -> Result.fail ("Unknown verification type: " ^ m)
-end
 
+  let to_yojson = function
+    | Request e  -> Request.to_yojson e
+    | Cancel e   -> Cancel.to_yojson e
+    | Start e    -> Start.to_yojson e
+    | StartSAS e -> StartSAS.to_yojson e
+    | Accept e   -> Accept.to_yojson e
+    | Key e      -> Key.to_yojson e
+    | Mac e      -> Mac.to_yojson e
+end
 
 type t =
   | NewDevice of NewDevice.t
-  | KeyInfo of KeyInfo.t
   | RoomKey of RoomKey.t
   | RoomKeyRequest of RoomKeyRequest.t
   | ForwardedRoomKey of ForwardedRoomKey.t
@@ -209,17 +216,61 @@ type t =
   | KeyVerification of KeyVerification.t
   | Unknown of Yojson.Safe.t
 
-let new_device e        = NewDevice e
-let key_verification e  = KeyVerification e
-let unknown e           = Unknown e
+let new_device e         = NewDevice e
+let room_key e           = RoomKey e
+let room_key_request e   = RoomKeyRequest e
+let forwarded_room_key e = ForwardedRoomKey e
+let dummy e              = Dummy e
+let key_verification e   = KeyVerification e
+let unknown e            = Unknown e
+
+let to_m_type = function
+  | NewDevice        _ -> "m.new_device"
+  | RoomKey          _ -> "m.room_key"
+  | RoomKeyRequest   _ -> "m.room_key_request"
+  | ForwardedRoomKey _ -> "m.forwarded_room_key"
+  | Dummy            _ -> "m.dummy"
+  | Unknown          _ -> "unknown"
+  | KeyVerification  e -> begin
+      match e with
+      | Request  _ -> "request"
+      | Cancel   _ -> "cancel"
+      | Start    _ -> "start"
+      | StartSAS _ -> "start"
+      | Accept   _ -> "accept"
+      | Key      _ -> "key"
+      | Mac      _ -> "mac"
+    end |> ( ^ ) "m.key.verification."
 
 let is_key_veri m = String.is_prefix m ~prefix:"m.key.verification."
 
 let of_yojson j =
   let open Result in
   match U.member "type" j |> U.to_string_option with
-  | Some m when is_key_veri m  -> KeyVerification.of_yojson j >>| key_verification
-  | Some "m.new_device"        -> NewDevice.of_yojson j       >>| new_device
-  (* | Some s                     -> Result.fail ("Invalid event type: " ^ s) *)
-  | Some _                     -> Result.return j             >>| unknown
-  | None                       -> Result.fail "Missing event type field."
+  | Some m when is_key_veri m   -> KeyVerification.of_yojson j  >>| key_verification
+  | Some "m.new_device"         -> NewDevice.of_yojson j        >>| new_device
+  | Some "m.room_key"           -> RoomKey.of_yojson j          >>| room_key
+  | Some "m.room_key_request"   -> RoomKeyRequest.of_yojson j   >>| room_key_request
+  | Some "m.forwarded_room_key" -> ForwardedRoomKey.of_yojson j >>| forwarded_room_key
+  | Some "m.dummy"              -> Dummy.of_yojson j            >>| dummy
+  (* | Some s                      -> Result.fail ("Invalid event type: " ^ s) *)
+  | Some _                      -> Result.return j              >>| unknown
+  | None                        -> Result.fail "Missing event type field."
+
+let to_yojson = function
+  | NewDevice        e -> NewDevice.to_yojson e
+  | RoomKey          e -> RoomKey.to_yojson e
+  | RoomKeyRequest   e -> RoomKeyRequest.to_yojson e
+  | ForwardedRoomKey e -> ForwardedRoomKey.to_yojson e
+  | Dummy            e -> Dummy.to_yojson e
+  | KeyVerification  e -> KeyVerification.to_yojson e
+  | Unknown          e -> e
+
+let to_message t recipient recipient_device : Yojson.Safe.t =
+  `Assoc [
+    ("messages", `Assoc [
+        (recipient, `Assoc [
+            (recipient_device, to_yojson t)
+          ])
+      ])
+  ]
