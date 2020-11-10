@@ -60,3 +60,43 @@ module DownloadedFile = struct
     fprintf oc "%s\n" t.bytes;
     Out_channel.close oc
 end
+
+module Signatures = struct
+  open Yojson_helpers
+  (* user -> algorithm:device_id -> signature *)
+  type t = string StringMap.t StringMap.t [@@deriving yojson]
+end
+
+module DeviceKeys = struct
+  (* algorithm:device_id -> key *)
+  type keys = string Yojson_helpers.StringMap.t [@@deriving yojson]
+
+  type t = { user_id    : string
+           ; device_id  : string
+           ; algorithms : string list
+           ; keys       : keys
+           ; signature  : Signatures.t
+           } [@@deriving yojson]
+end
+
+module OneTimeKeys = struct
+  type signed = { key : string
+                ; signatures : Signatures.t
+                } [@@deriving yojson]
+
+  type one_time = Unsigned of string | Signed of signed
+
+  let unsigned s = Unsigned s
+  let signed s   = Signed s
+
+  let one_time_to_yojson = function
+    | Unsigned s -> `String s
+    | Signed s   -> signed_to_yojson s
+
+  let one_time_of_yojson = function
+    | `Assoc _ as j -> signed_of_yojson j |> Result.map ~f:signed
+    | `String s     -> Result.return (Unsigned s)
+    | _             -> Result.fail "Invalid one_time object."
+
+  type t = one_time Yojson_helpers.StringMap.t [@@deriving yojson]
+end

@@ -307,6 +307,7 @@ let room_messages ?stop ?dir ?(limit=10) ?filter id start t =
   cohttp_response_to_yojson >>|=?
   Responses.(of_yojson RoomMessages.of_yojson)
 
+(* NOTE: Requires Olm and it's store first. *)
 let keys_upload = ()
 
 let keys_query users t =
@@ -318,7 +319,12 @@ let keys_query users t =
     Responses.(of_yojson KeysQuery.of_yojson)
   else Lwt_result.fail `NoKeyQueryRequired
 
-let keys_claim = ()
+let keys_claim user_devices t =
+  logged_in t >>=? fun token ->
+  Api.keys_claim token user_devices
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson KeysClaim.of_yojson)
 
 let to_device = ()
 

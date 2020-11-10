@@ -217,9 +217,12 @@ let room_messages ?stop ?dir ?(limit=10) ?filter access room_id start =
   let pth = "rooms" // room_id // "messages" in
   (`GET, build_path ~queries pth, None)
 
-(* NOTE: the body that is expected is a complex nested json. Will need to build
- * a type to hold all the values required and has a to_json. *)
-let keys_upload = ()
+let keys_upload ?device_keys ?one_time_keys access =
+  let queries = query "access_token" access in
+  let content = [ ("device_keys", json_of_option DeviceKeys.to_yojson device_keys)
+                ; ("one_time_keys", json_of_option OneTimeKeys.to_yojson one_time_keys)
+                ] |> yo_assoc in
+  (`POST, build_path ~queries "keys/upload", Some content)
 
 let keys_query ?since_token access user_set =
   let queries = query "access_token" access in
@@ -234,8 +237,9 @@ let keys_query ?since_token access user_set =
 let keys_claim access user_devices =
   let queries = query "access_token" access in
   (* Map devices list into an alist indicating desired encryption key type. *)
+  let desired_key = yo_string "signed_curve25519" in
   let f (u, ds) =
-    (u, List.map ~f:(fun d -> d, yo_string "signed_curve25519") ds |> yo_assoc) in
+    (u, List.map ~f:(fun d -> d, desired_key) ds |> yo_assoc) in
   let content = [ ("one_time_keys", user_devices |> List.map ~f |> yo_assoc) ]
                 |> yo_assoc in
   (`POST, build_path ~queries "keys/claim", Some content)

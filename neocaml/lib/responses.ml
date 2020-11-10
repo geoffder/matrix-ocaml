@@ -182,6 +182,18 @@ module LoginInfo = struct
   type t = { flows : login_flow list } [@@deriving of_yojson]
 end
 
+module KeysClaim = struct
+  type failures = string list
+
+  let failures_of_yojson j =
+    try U.keys j |> Result.return
+    with _ -> Result.fail "Expected `Assoc of server contact failures."
+
+  type t = { failures : failures
+           ; one_time_keys : Types.OneTimeKeys.t StringMap.t
+           } [@@deriving of_yojson]
+end
+
 (* TODO: Add an additional authentication required response (interactive
  * authentication API support) *)
 
