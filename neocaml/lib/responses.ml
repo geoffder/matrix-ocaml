@@ -169,6 +169,19 @@ module UploadFilter = struct
   type t = { filter_id : string }[@@deriving of_yojson]
 end
 
+module WhoAmI = struct
+  type t = { user_id : string }[@@deriving of_yojson]
+end
+
+module DiscoveryInfo = struct
+  type t = string StringMap.t StringMap.t [@@deriving of_yojson]
+end
+
+module LoginInfo = struct
+  type login_flow = { m_type : string [@key "type"] } [@@deriving of_yojson]
+  type t = { flows : login_flow list } [@@deriving of_yojson]
+end
+
 (* TODO: Add an additional authentication required response (interactive
  * authentication API support) *)
 

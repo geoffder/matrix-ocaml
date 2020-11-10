@@ -125,11 +125,35 @@ let send
   let call     = Client.call ?ctx ?chunked:None ~headers in
   repeat ?timeout ~call ~get_data meth uri
 
-let discovery_info = ()
+let discovery_info t =
+  Api.discovery_info()
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson DiscoveryInfo.of_yojson)
 
-let login_info = ()
+let login_info t =
+  Api.login_info ()
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson LoginInfo.of_yojson)
 
-let register = ()
+let register ?password ?device_name t =
+  Api.register ?password ?device_name ?device_id:t.device_id t.user
+  |> send t >>=?
+  cohttp_response_to_yojson >>|? fun j ->
+  let open Yojson.Safe.Util in
+  { t with
+    user_id      = j |> member "user_id" |> to_string_option
+  ; device_id    = j |> member "device_id" |> to_string_option
+  ; access_token = j |> member "access_token" |> to_string_option
+  }
+
+let whoami t =
+  logged_in t >>=? fun token ->
+  Api.whoami token
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson WhoAmI.of_yojson)
 
 let login ?device_name cred t =
   Api.login ?device_name ?device_id:t.device_id t.user cred

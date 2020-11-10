@@ -64,11 +64,23 @@ let encrypted_mxc_to_plumb ?homeserver mxc key hash iv =
 (* Api call funcs ->
  *  Cohttp.Code.meth * string * Yojson.Safe.t option *)
 
-let discovery_info = ()
+let discovery_info () =
+  (`GET, build_path ~api_path:"" ".well-known/matrix/client", None)
 
-let login_info = ()
+let login_info () = (`GET, build_path "login", None)
 
-let register = ()
+let register ?password ?device_name ?device_id user =
+  let content = [ ("auth", `Assoc [ ("type", `String "m.login.dummy") ])
+                ; ("username", `String user)
+                ; ("password", json_of_option yo_string password)
+                ; ("device_id", json_of_option yo_string device_id)
+                ; ("initial_device_display_name", json_of_option yo_string device_name)
+                ] |> yo_assoc in
+  (`POST, build_path "register", Some content)
+
+let whoami access =
+  let queries = query "access_token" access in
+  (`GET, build_path ~queries "account/whoami", None)
 
 let login ?device_name ?device_id user cred =
   let credential =
@@ -350,10 +362,6 @@ let set_presence ?status_msg access user_id presence =
     ] |> yo_assoc in
   let pth = "presence" // user_id // "status" in
   (`PUT, build_path ~queries pth, Some content)
-
-let whoami access =
-  let queries = query "access_token" access in
-  (`GET, build_path ~queries "account/whoami", None)
 
 let room_context ?limit access room_id event_id =
   let queries =
