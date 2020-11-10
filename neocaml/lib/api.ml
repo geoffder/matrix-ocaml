@@ -107,13 +107,14 @@ let logout ?(all_devices=false) access =
 
 let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence access =
   let queries =
-    query_of_option "since" since
-    @ query_of_option_map ~f:Int.to_string "timeout" timeout
-    @ query_of_option_map ~f:Presence.to_string "set_presence" set_presence
-    @ query_of_option_map ~f:Yojson.Safe.to_string "filter" filter
-    @ [ ("access_token", [ access ])
+    [ query_of_option "since" since
+    ; query_of_option_map ~f:Int.to_string "timeout" timeout
+    ; query_of_option_map ~f:Presence.to_string "set_presence" set_presence
+    ; query_of_option "filter" filter
+    ; [ ("access_token", [ access ])
       ; ("full_state",   [ Bool.to_string full_state ])
-      ] in
+      ]
+    ] |> List.join in
   (`GET, build_path ~queries "sync", None)
 
 let room_send access room_id event_type body tx_id =
@@ -207,13 +208,14 @@ let room_forget access room_id =
 
 let room_messages ?stop ?dir ?(limit=10) ?filter access room_id start =
   let queries =
-    query_of_option "to" stop
-    @ query_of_option_map ~f:Yojson.Safe.to_string "filter" filter
-    @ query_of_option_map ~f:MessageDirection.to_string "dir" dir
-    @ [ ("access_token", [ access ])
+    [ query_of_option "to" stop
+    ; query_of_option_map ~f:Yojson.Safe.to_string "filter" filter
+    ; query_of_option_map ~f:MessageDirection.to_string "dir" dir
+    ; [ ("access_token", [ access ])
       ; ("from",         [ start ])
       ; ("limit",        [ Int.to_string limit ])
-      ] in
+      ]
+    ] |> List.join in
   let pth = "rooms" // room_id // "messages" in
   (`GET, build_path ~queries pth, None)
 
@@ -322,10 +324,11 @@ let download ?filename ?(allow_remote=true) server_name media_id =
 
 let thumbnail ?(allow_remote=true) server_name media_id ~w ~h resize =
   let queries =
-    query "width" (Int.to_string w)
-    @ query "height" (Int.to_string h)
-    @ query "method" (Resize.to_string resize)
-    @ query "allow_remote" (Bool.to_string allow_remote) in
+    [ ("width", [ Int.to_string w ])
+    ; ("height", [ Int.to_string h ])
+    ; ("method", [ Resize.to_string resize ])
+    ; ("allow_remote", [ Bool.to_string allow_remote ])
+    ] in
   let pth = "thumbnail" // server_name // media_id in
   (`GET, build_path ~queries ~api_path:matrix_media_path pth, None)
 
