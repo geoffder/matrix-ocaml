@@ -326,6 +326,10 @@ let keys_claim user_devices t =
   cohttp_response_to_yojson >>|=?
   Responses.(of_yojson KeysClaim.of_yojson)
 
+(* TODO: See ToDeviceMessage in nio/event_builders/direct_messages.py
+ * Finally come to the point when I'll need to clean up the ToDevice story
+ * in the Events module. Need something consistent that makes this clean and the
+ * generation of them clean. *)
 let to_device = ()
 
 let devices t =
