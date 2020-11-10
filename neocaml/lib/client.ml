@@ -125,6 +125,10 @@ let send
   let call     = Client.call ?ctx ?chunked:None ~headers in
   repeat ?timeout ~call ~get_data meth uri
 
+let mxc_to_http ?homeserver mxc t =
+  let homeserver = Option.value ~default:t.homeserver homeserver in
+  Api.mxc_to_http ~homeserver mxc
+
 let discovery_info t =
   Api.discovery_info()
   |> send t >>=?
@@ -307,8 +311,26 @@ let room_messages ?stop ?dir ?(limit=10) ?filter id start t =
   cohttp_response_to_yojson >>|=?
   Responses.(of_yojson RoomMessages.of_yojson)
 
-(* NOTE: Requires Olm and it's store first. *)
-let keys_upload = ()
+let start_key_verification = ()
+
+let cancel_key_verification = ()
+
+let accept_key_verification = ()
+
+let confirm_short_auth_string = ()
+
+(* TODO: See ToDeviceMessage in nio/event_builders/direct_messages.py
+ * Finally come to the point when I'll need to clean up the ToDevice story
+ * in the Events module. Need something consistent that makes this clean and the
+ * generation of them clean. *)
+let to_device = ()
+
+let keys_upload ?device_keys ?one_time_keys t =
+  logged_in t >>=? fun token ->
+  Api.keys_upload ?device_keys ?one_time_keys token
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson KeysUpload.of_yojson)
 
 let keys_query users t =
   logged_in t >>=? fun token ->
@@ -326,11 +348,13 @@ let keys_claim user_devices t =
   cohttp_response_to_yojson >>|=?
   Responses.(of_yojson KeysClaim.of_yojson)
 
-(* TODO: See ToDeviceMessage in nio/event_builders/direct_messages.py
- * Finally come to the point when I'll need to clean up the ToDevice story
- * in the Events module. Need something consistent that makes this clean and the
- * generation of them clean. *)
-let to_device = ()
+let share_group_session = ()
+
+let request_room_key = ()
+
+let export_keys = ()
+
+let import_keys = ()
 
 let devices t =
   logged_in t >>=? fun token ->
