@@ -319,11 +319,16 @@ let accept_key_verification = ()
 
 let confirm_short_auth_string = ()
 
-(* TODO: See ToDeviceMessage in nio/event_builders/direct_messages.py
- * Finally come to the point when I'll need to clean up the ToDevice story
- * in the Events module. Need something consistent that makes this clean and the
- * generation of them clean. *)
-let to_device = ()
+let to_device ?tx_id msg recipient recipient_device t =
+  logged_in t >>=? fun token ->
+  let body   = ToDevice.to_message msg recipient recipient_device in
+  let m_type = ToDevice.to_m_type msg in
+  tx_id
+  |> Option.value ~default:(Uuid.create_random t.random_state |> Uuid.to_string)
+  |> Api.to_device token m_type body
+  |> send t >>=?
+  cohttp_response_to_yojson >>|=?
+  Responses.(of_yojson ToDevice.of_yojson)
 
 let keys_upload ?device_keys ?one_time_keys t =
   logged_in t >>=? fun token ->

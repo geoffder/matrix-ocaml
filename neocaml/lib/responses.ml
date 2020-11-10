@@ -202,6 +202,8 @@ module KeysUpload = struct
   type t = { one_time_key_counts : int StringMap.t } [@@deriving of_yojson]
 end
 
+module ToDevice = Empty (struct let fail = "Failed to send to-device message." end)
+
 (* TODO: Add an additional authentication required response (interactive
  * authentication API support) *)
 
