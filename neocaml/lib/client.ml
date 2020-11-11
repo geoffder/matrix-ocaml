@@ -1,9 +1,5 @@
 open Core
-
 open Lwt
-open Cohttp
-open Cohttp_lwt_unix
-
 open Neo_infix
 
 (* NOTE: Should probably not have random state in the client, but this will
@@ -33,7 +29,7 @@ let create ?device_id ?store_path ?access_token homeserver user =
 
 let complete_uri t pth = t.homeserver ^ pth |> Uri.of_string
 
-let response_code = Response.status >> Code.code_of_status
+let response_code = Cohttp.(Response.status >> Code.code_of_status)
 
 let body_of_json j = j |> Yojson.Safe.to_string |> Cohttp_lwt.Body.of_string
 
@@ -87,7 +83,7 @@ let repeat ?timeout ?(max_429s=100) ?(max_outs=100) ~call ~get_data meth uri =
     with_timeout ?timeout ~call:loaded uri
     >>= function
     | Ok (resp, _body as response) ->
-      if phys_equal resp.Response.status `Too_many_requests
+      if phys_equal Cohttp.Response.(resp.status) `Too_many_requests
       then
         if n_429s < max_429s
         then Lwt_unix.sleep 5. >>= fun () -> aux (n_429s + 1) n_outs
@@ -116,11 +112,11 @@ let send
       ~f:(fun i -> [ ("Content-Length", Int.to_string i) ])
       ~default:[]
       content_len
-    |> Header.of_list in
+    |> Cohttp.Header.of_list in
   let uri      = complete_uri t pth in
   let body     = Option.map ~f:body_of_json content in
   let get_data = Option.value ~default:(fun () -> Lwt.return body) data_provider in
-  let call     = Client.call ?ctx ?chunked:None ~headers in
+  let call     = Cohttp_lwt_unix.Client.call ?ctx ?chunked:None ~headers in
   repeat ?timeout ~call ~get_data meth uri
 
 let mxc_to_http ?homeserver mxc t =
@@ -185,8 +181,8 @@ let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence t =
 (* TODO: Handling encryption. *)
 let room_send ?tx_id id event t =
   logged_in t >>=? fun token ->
-  let body = Events.Room.Content.to_yojson event in
-  let m_type = Events.Room.Content.to_m_type event in
+  let body = Event.Room.Content.to_yojson event in
+  let m_type = Event.Room.Content.to_m_type event in
   tx_id
   |> Option.value ~default:(Uuid.create_random t.random_state |> Uuid.to_string)
   |> Api.room_send token id m_type body
@@ -199,12 +195,12 @@ let room_get_event room_id event_id t =
   Api.room_get_event token room_id event_id
   |> send t >>=?
   cohttp_response_to_yojson >>|=?
-  Responses.of_yojson Events.Room.of_yojson
+  Responses.of_yojson Event.Room.of_yojson
 
 let room_put_state ?state_key room_id event t =
   logged_in t >>=? fun token ->
-  let body   = Events.Room.Content.to_yojson event in
-  let m_type = Events.Room.Content.to_m_type event in
+  let body   = Event.Room.Content.to_yojson event in
+  let m_type = Event.Room.Content.to_m_type event in
   Api.room_put_state ?state_key token room_id m_type body
   |> send t >>=?
   cohttp_response_to_yojson >>|=?
@@ -222,7 +218,7 @@ let room_get_state_event room_id event_type state_key t =
   Api.room_get_state_event token room_id event_type state_key
   |> send t >>=?
   cohttp_response_to_yojson >>|=?
-  Responses.of_yojson (Events.Room.Content.of_yojson event_type)
+  Responses.of_yojson (Event.Room.Content.of_yojson event_type)
 
 let room_redact ?reason ?tx_id room_id event_id t =
   logged_in t >>=? fun token ->
@@ -440,7 +436,7 @@ let send_image ?monitor pth room_id t =
                      |> Option.value ~default:"png"
                      |> ( ^ ) "image/" in
   upload ~content_type ~filename provider t >>=? fun { content_uri } ->
-  let open Events.Room in
+  let open Event.Room in
   let msg = Message.Image.create ~url:content_uri filename |> Message.image in
   room_send room_id (Content.Message msg) t
 
@@ -452,7 +448,7 @@ let room_upload ?monitor pth room_id t =
   let content_type = Ext.to_content_type ext in
   upload ~content_type ~filename provider t >>=? fun { content_uri } ->
   let msg = (Ext.to_msg_create ext) ~url:content_uri filename in
-  room_send room_id (Events.Room.Content.Message msg) t
+  room_send room_id (Event.Room.Content.Message msg) t
 
 let download ?filename ?allow_remote server_name media_id t =
   Api.download ?filename ?allow_remote server_name media_id
