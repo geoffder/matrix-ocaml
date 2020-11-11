@@ -4,8 +4,6 @@ open Lwt
 open Cohttp
 open Cohttp_lwt_unix
 
-(* open Types *)
-(* open Yojson_helpers *)
 open Neo_infix
 
 (* NOTE: Should probably not have random state in the client, but this will
@@ -311,14 +309,6 @@ let room_messages ?stop ?dir ?(limit=10) ?filter id start t =
   cohttp_response_to_yojson >>|=?
   Responses.(of_yojson RoomMessages.of_yojson)
 
-let start_key_verification = ()
-
-let cancel_key_verification = ()
-
-let accept_key_verification = ()
-
-let confirm_short_auth_string = ()
-
 let to_device ?tx_id msg recipient recipient_device t =
   logged_in t >>=? fun token ->
   let body   = ToDevice.to_message msg recipient recipient_device in
@@ -352,14 +342,6 @@ let keys_claim user_devices t =
   |> send t >>=?
   cohttp_response_to_yojson >>|=?
   Responses.(of_yojson KeysClaim.of_yojson)
-
-let share_group_session = ()
-
-let request_room_key = ()
-
-let export_keys = ()
-
-let import_keys = ()
 
 let devices t =
   logged_in t >>=? fun token ->
