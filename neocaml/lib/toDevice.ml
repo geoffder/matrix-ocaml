@@ -179,6 +179,15 @@ module KeyVerification = struct
   let key e       = Key e
   let mac e       = Mac e
 
+  let to_m_type = function
+    | Request  _ -> "m.key.verification.request"
+    | Cancel   _ -> "m.key.verification.cancel"
+    | Start    _ -> "m.key.verification.start"
+    | StartSAS _ -> "m.key.verification.start"
+    | Accept   _ -> "m.key.verification.accept"
+    | Key      _ -> "m.key.verification.key"
+    | Mac      _ -> "m.key.verification.mac"
+
   let is_sas c =
     try U.member "method" c |> U.to_string |> String.equal "m.sas.v1"
     with _ -> false
@@ -197,14 +206,18 @@ module KeyVerification = struct
     | "mac"                 -> Mac.of_yojson c       >>| mac
     | m                     -> Result.fail ("Unknown verification type: " ^ m)
 
-  let to_yojson = function
-    | Request e  -> Request.to_yojson e
-    | Cancel e   -> Cancel.to_yojson e
-    | Start e    -> Start.to_yojson e
-    | StartSAS e -> StartSAS.to_yojson e
-    | Accept e   -> Accept.to_yojson e
-    | Key e      -> Key.to_yojson e
-    | Mac e      -> Mac.to_yojson e
+  let to_yojson t : Yojson.Safe.t =
+    let content =
+      match t with
+      | Request e  -> Request.to_yojson e
+      | Cancel e   -> Cancel.to_yojson e
+      | Start e    -> Start.to_yojson e
+      | StartSAS e -> StartSAS.to_yojson e
+      | Accept e   -> Accept.to_yojson e
+      | Key e      -> Key.to_yojson e
+      | Mac e      -> Mac.to_yojson e
+    in
+    `Assoc [ ("type", `String (to_m_type t)); ("content", content) ]
 end
 
 type t =
@@ -231,16 +244,7 @@ let to_m_type = function
   | ForwardedRoomKey _ -> "m.forwarded_room_key"
   | Dummy            _ -> "m.dummy"
   | Unknown          _ -> "unknown"
-  | KeyVerification  e -> begin
-      match e with
-      | Request  _ -> "request"
-      | Cancel   _ -> "cancel"
-      | Start    _ -> "start"
-      | StartSAS _ -> "start"
-      | Accept   _ -> "accept"
-      | Key      _ -> "key"
-      | Mac      _ -> "mac"
-    end |> ( ^ ) "m.key.verification."
+  | KeyVerification  e -> KeyVerification.to_m_type e
 
 let is_key_veri m = String.is_prefix m ~prefix:"m.key.verification."
 
