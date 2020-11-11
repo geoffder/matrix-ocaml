@@ -30,8 +30,8 @@ module Ext = struct
     | _                      -> "appication/octet-stream"
 
   let to_msg_create = function
-    | Some e when is_image e -> Events.Room.Message.Image.no_info_msg
-    | Some e when is_video e -> Events.Room.Message.Video.no_info_msg
-    | Some e when is_audio e -> Events.Room.Message.Audio.no_info_msg
-    | _                      -> Events.Room.Message.File.no_info_msg
+    | Some e when is_image e -> Event.Room.Message.Image.no_info_msg
+    | Some e when is_video e -> Event.Room.Message.Video.no_info_msg
+    | Some e when is_audio e -> Event.Room.Message.Audio.no_info_msg
+    | _                      -> Event.Room.Message.File.no_info_msg
 end

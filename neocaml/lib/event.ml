@@ -1,7 +1,7 @@
 open Core
 open Yojson_helpers
 
-module Room = Events_room.Room
+module Room = Event_room.Room
 
 module Call = struct
   module Invite = struct

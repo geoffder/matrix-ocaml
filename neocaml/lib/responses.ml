@@ -10,7 +10,7 @@ module Empty (M : sig val fail : string end) = struct
 end
 
 module EventList = struct
-  type t = { events : Events.t list } [@@deriving of_yojson]
+  type t = { events : Event.t list } [@@deriving of_yojson]
 end
 
 module ToDeviceList = struct
@@ -18,7 +18,7 @@ module ToDeviceList = struct
 end
 
 module StateList = struct
-  type t = { events : Events.Room.t list } [@@deriving of_yojson]
+  type t = { events : Event.Room.t list } [@@deriving of_yojson]
 end
 
 module JoinedRooms = struct
@@ -26,12 +26,12 @@ module JoinedRooms = struct
 end
 
 module RoomMessages = struct
-  (* NOTE: Call events appear in chunk, should merge the Events.Call module into
-   * Events.Room? Otherwise would have to use Events.t here. *)
+  (* NOTE: Call events appear in chunk, should merge the Event.Call module into
+   * Event.Room? Otherwise would have to use Event.t here. *)
   type t  = { start_token : string [@key "start"]
             ; end_token   : string [@key "end"]
-            ; chunk       : Events.t list
-            ; state       : Events.Room.t list option [@default None]
+            ; chunk       : Event.t list
+            ; state       : Event.Room.t list option [@default None]
             } [@@deriving of_yojson]
 end
 
@@ -92,7 +92,7 @@ module JoinedMembers = struct
 end
 
 module RoomGetState = struct
-  type t = Events.Room.t list [@@deriving of_yojson]
+  type t = Event.Room.t list [@@deriving of_yojson]
 end
 
 module RoomResolveAlias = struct
@@ -148,10 +148,10 @@ module RoomContext = struct
    * with elsewhere. Check other occurences, Sync is one for sure. *)
   type t = { start_token   : string
            ; end_token     : string
-           ; events_before : Events.Room.t list
-           ; event         : Events.Room.t
-           ; events_after  : Events.Room.t list
-           ; state         : Events.Room.t list
+           ; events_before : Event.Room.t list
+           ; event         : Event.Room.t
+           ; events_after  : Event.Room.t list
+           ; state         : Event.Room.t list
            } [@@deriving of_yojson]
 end
 
@@ -209,8 +209,8 @@ module ToDevice = Empty (struct let fail = "Failed to send to-device message." e
 
 module Sync = struct
   module Timeline = struct
-    (* NOTE: Try using Events.Room.t but might need to be Events.t *)
-    type t = { events     : Events.Room.t list option [@default None]
+    (* NOTE: Try using Event.Room.t but might need to be Event.t *)
+    type t = { events     : Event.Room.t list option [@default None]
              ; limited    : bool option               [@default None]
              ; prev_batch : string
              } [@@deriving of_yojson]

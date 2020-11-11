@@ -41,7 +41,7 @@ let%test "set read markers" =
   |> Result.is_ok
 
 let send_poggers () =
-  let open Events.Room in
+  let open Event.Room in
   let pogchamp =
     "<img src='mxc://matrix.shakeandwake.xyz/JTlEcEaBsmCuZzVDNdVgSvQN'" ^
     " alt=':pogchamp:' width=32 height=32>" in
@@ -55,12 +55,12 @@ let send_poggers () =
   logged >>=? Client.room_send room_id (Content.Message content)
 
 let send_emote () =
-  let open Events.Room in
+  let open Event.Room in
   let content = Message.Emote.create "smiles creepily." |> Message.emote in
   logged >>=? Client.room_send room_id (Content.Message content)
 
 let send_notice () =
-  let open Events.Room in
+  let open Event.Room in
   let content = Message.Notice.create "You're on notice!" |> Message.notice in
   logged >>=? Client.room_send room_id (Content.Message content)
 
