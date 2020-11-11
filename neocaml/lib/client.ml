@@ -1,5 +1,5 @@
 open Core
-open Lwt
+open Lwt.Infix
 open Neo_infix
 
 (* NOTE: Should probably not have random state in the client, but this will
