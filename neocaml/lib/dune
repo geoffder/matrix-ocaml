@@ -1,7 +1,7 @@
 (library
  (name neocaml)
  (libraries core
-            core_kernel.uuid
+            core.uuid
             olm
             str
             lwt

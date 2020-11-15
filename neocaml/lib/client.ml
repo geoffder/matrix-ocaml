@@ -12,7 +12,6 @@ type t = { homeserver      : string
          ; access_token    : string option
          ; rooms           : (string, Room.t, String.comparator_witness) Map.t
          ; encrypted_rooms : (string, String.comparator_witness) Set.t
-         ; random_state    : Random.State.t
          }
 
 let create ?device_id ?store_path ?access_token homeserver user =
@@ -24,7 +23,6 @@ let create ?device_id ?store_path ?access_token homeserver user =
   ; access_token
   ; rooms           = Map.empty (module String)
   ; encrypted_rooms = Set.empty (module String)
-  ; random_state    = Random.State.make_self_init ~allow_in_tests:true ()
   }
 
 let complete_uri t pth = t.homeserver ^ pth |> Uri.of_string
@@ -32,6 +30,8 @@ let complete_uri t pth = t.homeserver ^ pth |> Uri.of_string
 let response_code = Cohttp.(Response.status >> Code.code_of_status)
 
 let body_of_json j = j |> Yojson.Safe.to_string |> Cohttp_lwt.Body.of_string
+
+let uuid_string () = Uuid_unix.create () |> Uuid.to_string
 
 let cohttp_response_to_yojson (_, body) =
   Cohttp_lwt.Body.to_string body >>= fun str ->
@@ -184,7 +184,7 @@ let room_send ?tx_id id event t =
   let body = Event.Room.Content.to_yojson event in
   let m_type = Event.Room.Content.to_m_type event in
   tx_id
-  |> Option.value ~default:(Uuid.create_random t.random_state |> Uuid.to_string)
+  |> Option.value ~default:(uuid_string ())
   |> Api.room_send token id m_type body
   |> send t >>=?
   cohttp_response_to_yojson >>|=?
@@ -223,7 +223,7 @@ let room_get_state_event room_id event_type state_key t =
 let room_redact ?reason ?tx_id room_id event_id t =
   logged_in t >>=? fun token ->
   tx_id
-  |> Option.value ~default:(Uuid.create_random t.random_state |> Uuid.to_string)
+  |> Option.value ~default:(uuid_string ())
   |> Api.room_redact ?reason token room_id event_id
   |> send t >>=?
   cohttp_response_to_yojson >>|=?
@@ -310,7 +310,7 @@ let to_device ?tx_id msg recipient recipient_device t =
   let body   = ToDevice.to_message msg recipient recipient_device in
   let m_type = ToDevice.to_m_type msg in
   tx_id
-  |> Option.value ~default:(Uuid.create_random t.random_state |> Uuid.to_string)
+  |> Option.value ~default:(uuid_string ())
   |> Api.to_device token m_type body
   |> send t >>=?
   cohttp_response_to_yojson >>|=?
