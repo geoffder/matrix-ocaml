@@ -61,6 +61,8 @@ let encrypted_mxc_to_plumb ?homeserver mxc key hash iv =
   |> sprintf "%s/_matrix/media/r0/download/%s%s?%s" home server_name (Uri.path uri)
   |> some
 
+let canonical_json j = Yojson.Safe.sort j |> Yojson.Safe.to_string
+
 (* Api call funcs ->
  *  Cohttp.Code.meth * string * Yojson.Safe.t option *)
 
