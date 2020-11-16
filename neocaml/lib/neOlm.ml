@@ -2,6 +2,8 @@ open! Core
 open Yojson_helpers
 open Result.Monad_infix
 
+let util = Olm.Utility.create ()
+
 module Device = struct
   type trust_state = Unset | Verified | Blacklisted | Ignored
 
@@ -10,16 +12,16 @@ module Device = struct
               }
 
   type t = { user_id      : string
-           ; device_id    : string
+           ; id           : string
            ; keys         : keys
            ; display_name : string option
            ; deleted      : bool
            ; trust_state  : trust_state
            }
 
-  let create ?display_name user_id device_id ed25519 curve25519 =
+  let create ?display_name user_id id ed25519 curve25519 =
     { user_id
-    ; device_id
+    ; id
     ; keys         = { ed25519; curve25519 }
     ; display_name
     ; deleted      = false
@@ -69,14 +71,14 @@ module DeviceMap = struct
     match Map.find t d.user_id with
     | Some u ->
       begin
-        match Map.add u ~key:d.device_id ~data:d with
+        match Map.add u ~key:d.id ~data:d with
         | `Ok u      -> Result.return u
         | `Duplicate -> Result.fail `DuplicateDevice
       end >>| fun data -> Map.set t ~key:d.user_id ~data
     | None ->
       Map.add_exn t
         ~key:d.user_id
-        ~data:(Map.of_alist_exn (module String) [ (d.device_id, d) ])
+        ~data:(Map.of_alist_exn (module String) [ (d.id, d) ])
       |> Result.return
 end
 
@@ -100,6 +102,7 @@ module Sas = struct
     | `InvalidMessage
     | `CommitmentMismatch
     | `SasMismatch
+    | `Protocol of string
     | `UnknownError of string
     ]
 
@@ -126,6 +129,10 @@ module Sas = struct
     | "hkdf-hmac-sha256" -> Result.return Normal
     | "hmac-sha256"      -> Result.return Old
     | _                  -> Result.fail `UnknownMethod
+
+  let sas_method_to_string = function
+    | Emoji   -> "emoji"
+    | Decimal -> "decimal"
 
   let sas_method_of_string = function
     | "emoji"   -> Result.return Emoji
@@ -213,6 +220,8 @@ module Sas = struct
     ] |> List.mapi ~f:(fun i e -> (i, e))
     |> Map.of_alist_exn (module Int)
 
+  let sas_vers          = "m.sas.v1"
+  let hash_v1           = "sha256"
   let max_age           = Time.Span.of_min 5.0
   let max_event_timeout = Time.Span.of_min 1.0
 
@@ -304,7 +313,7 @@ module Sas = struct
     ToDevice.KeyVerification.StartSAS.to_yojson event
     |> Api.canonical_json
     |> ( ^ )  pubkey
-    |> Olm.Utility.sha256 (Olm.Utility.create ()) >>= fun commitment ->
+    |> Olm.Utility.sha256 util >>= fun commitment ->
     Result.return { t with commitment = Some commitment }
 
   (* I don't really like this way, since you need to check the error field
@@ -328,7 +337,10 @@ module Sas = struct
     ToDevice.KeyVerification.StartSAS.to_yojson event
     |> Api.canonical_json
     |> ( ^ )  pubkey
-    |> Olm.Utility.sha256 (Olm.Utility.create ()) >>= fun commitment ->
+    |> Olm.Utility.sha256 util >>= fun commitment ->
+    let sas_vers_res =
+      Result.ok_if_true (String.equal event.v_method sas_vers) ~error:`UnknownMethod
+    in
     let methods_res =
       List.map ~f:sas_method_of_string event.short_authentication_string
       |> Result.all in
@@ -338,15 +350,15 @@ module Sas = struct
     let macs_res =
       List.map ~f:mac_method_of_string event.message_authentication_codes
       |> Result.all in
-    match methods_res, protocols_res, macs_res with
-    | Ok sas_methods, Ok key_agreement_protocols, Ok mac_methods ->
+    match sas_vers_res, methods_res, protocols_res, macs_res with
+    | Ok (), Ok sas_methods, Ok key_agreement_protocols, Ok mac_methods ->
       Result.return { t with
                       sas_methods
                     ; mac_methods
                     ; key_agreement_protocols
                     ; commitment = Some commitment
                     }
-    | _, _, _ ->
+    | _, _, _, _ ->
       Result.return { t with
                       sas_methods             = []
                     ; mac_methods             = []
@@ -364,6 +376,15 @@ module Sas = struct
     | { state = MacReceived; sas_accepted = true; _ } -> true
     | _                                               -> false
 
+  let supports_normal_mac t =
+    List.exists t.mac_methods ~f:(function | Normal -> true | _ -> false)
+
+  let supports_agreement_v2 t =
+    List.exists t.key_agreement_protocols ~f:(function | V2 -> true | _ -> false)
+
+  let event_to_message t e =
+    ToDevice.to_message e t.other_olm_device.user_id t.other_olm_device.id
+
   let time_out t =
     if verified t || canceled t
     then false, t
@@ -377,4 +398,133 @@ module Sas = struct
   let set_their_pubkey t pubkey =
     Olm.Sas.set_their_pubkey t.sas pubkey >>| fun _ ->
     { t with their_sas_key = Some pubkey }
+
+  let accept_sas = function
+    | { state = Canceled; _ }     -> Result.fail (`Protocol "Already canceled.")
+    | { their_sas_key = None; _ } -> Result.fail (`Protocol "Other key not even set.")
+    | t                           -> Result.return { t with sas_accepted = true }
+
+  let reject_sas = function
+    | { their_sas_key = None; _ } -> Result.fail (`Protocol "Other key not even set.")
+    | t -> Result.return { t with state = Canceled; cancel_reason = Some `SasMismatch }
+
+  let cancel t =
+    { t with state = Canceled; cancel_reason = Some `UserCancel }
+
+  let grouper ?filler str n =
+    let f i acc c =
+      let s = String.of_char c in
+      acc ^ if i > 0 && i mod n = 0 then " " ^ s else s in
+    let padding =
+      match String.length str mod n with
+      | 0   -> ""
+      | off -> Option.value_map filler ~default:""
+                 ~f:(fun c -> String.init (n - off) ~f:(fun _ -> c))
+    in
+    String.foldi str ~f ~init:"" ^ padding
+
+  let extra_info_v1 t =
+    let dev        = t.other_olm_device in
+    let tx_id      = t.transaction_id in
+    let our_info   = sprintf "%s%s" t.own_user t.own_device in
+    let their_info = sprintf "%s%s" dev.user_id dev.id in
+    if t.we_started_it
+    then sprintf "MATRIX_KEY_VERIFICATION_SAS%s%s%s" our_info their_info tx_id
+    else sprintf "MATRIX_KEY_VERIFICATION_SAS%s%s%s" their_info our_info tx_id
+
+  let extra_info_v2 t =
+    Result.of_option t.their_sas_key
+      ~error:(`Protocol "Their SAS key is not set.") >>= fun their_key ->
+    Olm.Sas.pubkey t.sas                             >>| fun pubkey ->
+    let dev        = t.other_olm_device in
+    let tx_id      = t.transaction_id in
+    let our_info   = sprintf "%s|%s|%s" t.own_user t.own_device pubkey in
+    let their_info = sprintf "%s|%s|%s" dev.user_id dev.id their_key in
+    if t.we_started_it
+    then sprintf "MATRIX_KEY_VERIFICATION_SAS|%s|%s|%s" our_info their_info tx_id
+    else sprintf "MATRIX_KEY_VERIFICATION_SAS|%s|%s|%s" their_info our_info tx_id
+
+  let extra_info t =
+    match t.chosen_key_agreement with
+    | None    -> Result.fail (`Protocol "No key agreement chosen.")
+    | Some V2 -> extra_info_v2 t
+    | Some V1 -> Result.return (extra_info_v1 t)
+
+  (* NOTE: This function is very weird in the python. It converts the bytes into
+   * an 8bit binary string (concatenated all bytes), then breaks the first 42
+   * characters of the string into chunks of 6, then translates those into emoji
+   * map indices. Need to check the js sdk version and see if it is the same.
+   * Since it is with the shared secret, I'm assuming that all clients are supposed
+   * to arrive at the same emojis, meaning this method is probably common. *)
+  (* let get_emoji t =
+   *   extra_info t >>= fun info ->
+   *   Olm.Sas.generate_bytes t.sas info 6 >>= fun bytes ->
+   *   let ints = Bytes.of_string bytes |> Bytes.to_list |> List.map ~f:Char.to_int in *)
+
+  let start_verification_event t =
+    Result.ok_if_true t.we_started_it
+      ~error:(`Protocol "Not started by us, can't send.") >>= fun () ->
+    Result.ok_if_true (not @@ canceled t)
+      ~error:(`Protocol "Verification was canceled, can't send.") >>= fun () ->
+    let key_agreement_protocols =
+      List.map ~f:key_agreement_protocol_to_string t.key_agreement_protocols in
+    ToDevice.KeyVerification
+      (StartSAS
+         { transaction_id                = t.transaction_id
+         ; v_method                      = sas_vers
+         ; key_agreement_protocols
+         ; hashes                        = [ hash_v1 ]
+         ; message_authentication_codes  = List.map ~f:mac_method_to_string t.mac_methods
+         ; short_authentication_string   = List.map ~f:sas_method_to_string t.sas_methods
+         })
+    |> Result.return
+
+  let start_verification_message t =
+    start_verification_event t >>| event_to_message t
+
+  let accept_verification_event t =
+    Result.ok_if_true (not t.we_started_it)
+      ~error:(`Protocol "Started by us, can't accept offer.") >>= fun () ->
+    Result.ok_if_true (not @@ canceled t)
+      ~error:(`Protocol "Verification was canceled, can't accept offer.") >>= fun () ->
+    Result.of_option t.commitment
+      ~error:(`Protocol "No commitment, can't accept offer.") >>= fun commitment ->
+    let sas_methods = List.map ~f:sas_method_to_string t.sas_methods in
+    let chosen_mac =
+      mac_method_to_string (if supports_normal_mac t then Normal else Old) in
+    let chosen_agreement =
+      key_agreement_protocol_to_string (if supports_agreement_v2 t then V2 else V1) in
+    ToDevice.KeyVerification
+      (Accept { transaction_id              = t.transaction_id
+              ; v_method                    = sas_vers
+              ; key_agreement_protocol      = chosen_agreement
+              ; hash                        = hash_v1
+              ; message_authentication_code = chosen_mac
+              ; short_authentication_string = sas_methods
+              ; commitment
+              })
+    |> Result.return
+
+  let accept_verification_message t =
+    accept_verification_event t >>| event_to_message t
+
+  let check_commitment t key =
+    match t.commitment with
+    | None   -> Result.fail (`Protocol "No existing commitment.")
+    | Some c ->
+      accept_verification_event t >>= fun event ->
+      let content = ToDevice.to_yojson event
+                    |> Yojson.Safe.Util.member "content"
+                    |> Api.canonical_json
+      in
+      Olm.Utility.sha256 util (key ^ content) >>| String.equal c
+
+  let share_key_event t =
+    Result.ok_if_true (not @@ canceled t)
+      ~error:(`Protocol "Verification was canceled, can't share key.") >>= fun () ->
+    Olm.Sas.pubkey t.sas >>= fun key ->
+    ToDevice.KeyVerification (Key { transaction_id = t.transaction_id; key })
+    |> Result.return
+
+  let share_key_message t = share_key_event t >>| event_to_message t
 end
