@@ -4,6 +4,29 @@ open Result.Monad_infix
 
 let util = Olm.Utility.create ()
 
+let bin8_of_int_exn d =
+  if d < 0 || d > 255
+  then failwith "Must be unsigned 8bit int."
+  else
+    let rec aux acc = function
+      | 0 -> acc
+      | d -> aux (string_of_int (d land 1) :: acc) (d lsr 1)
+    in
+    let bin = String.concat (aux [] d) in
+    let pad = String.init ~f:(fun _ -> '0') (8 - String.length bin) in
+    pad ^ bin
+
+let int_of_bin_exn s =
+  let char_to_bit = function
+    | '0' -> 0
+    | '1' -> 1
+    | _   -> failwith "Bitstring must only consist of 0s and 1s."
+  in
+  String.lstrip ~drop:(Char.equal '0') s
+  |> String.rev
+  |> String.foldi ~init:0
+    ~f:(fun i sum c -> sum + (char_to_bit c * (Int.pow 2 i)))
+
 module Device = struct
   type trust_state = Unset | Verified | Blacklisted | Ignored
 
@@ -411,7 +434,7 @@ module Sas = struct
   let cancel t =
     { t with state = Canceled; cancel_reason = Some `UserCancel }
 
-  let grouper ?filler str n =
+  let grouper ?filler n str =
     let f i acc c =
       let s = String.of_char c in
       acc ^ if i > 0 && i mod n = 0 then " " ^ s else s in
@@ -422,6 +445,7 @@ module Sas = struct
                  ~f:(fun c -> String.init (n - off) ~f:(fun _ -> c))
     in
     String.foldi str ~f ~init:"" ^ padding
+    |> String.split ~on:' '
 
   let extra_info_v1 t =
     let dev        = t.other_olm_device in
@@ -450,16 +474,31 @@ module Sas = struct
     | Some V2 -> extra_info_v2 t
     | Some V1 -> Result.return (extra_info_v1 t)
 
-  (* NOTE: This function is very weird in the python. It converts the bytes into
-   * an 8bit binary string (concatenated all bytes), then breaks the first 42
-   * characters of the string into chunks of 6, then translates those into emoji
-   * map indices. Need to check the js sdk version and see if it is the same.
-   * Since it is with the shared secret, I'm assuming that all clients are supposed
-   * to arrive at the same emojis, meaning this method is probably common. *)
-  (* let get_emoji t =
-   *   extra_info t >>= fun info ->
-   *   Olm.Sas.generate_bytes t.sas info 6 >>= fun bytes ->
-   *   let ints = Bytes.of_string bytes |> Bytes.to_list |> List.map ~f:Char.to_int in *)
+  let get_emojis t =
+    extra_info t >>= fun info ->
+    Olm.Sas.generate_bytes t.sas info 6 >>= fun bytes ->
+    try
+      Bytes.of_string bytes
+      |> Bytes.fold ~init:"" ~f:(fun acc c ->
+          acc ^ (Char.to_int c |> bin8_of_int_exn))
+      |> Fn.flip String.prefix @@ 42
+      |> grouper 6
+      |> List.map ~f:(fun bits -> int_of_bin_exn bits |> Map.find_exn emoji)
+      |> Result.return
+    with e -> Result.fail (`EmojiFail (Exn.to_string e))
+
+  let get_decimals t =
+    extra_info t >>= fun info ->
+    Olm.Sas.generate_bytes t.sas info 5 >>= fun bytes ->
+    try
+      Bytes.of_string bytes
+      |> Bytes.fold ~init:"" ~f:(fun acc c ->
+          acc ^ (Char.to_int c |> bin8_of_int_exn))
+      |> Fn.flip String.drop_suffix @@ 1
+      |> grouper 13
+      |> List.map ~f:(fun bits -> int_of_bin_exn bits + 1000)
+      |> Result.return
+    with e -> Result.fail (`DecimalsFail (Exn.to_string e))
 
   let start_verification_event t =
     Result.ok_if_true t.we_started_it
