@@ -63,6 +63,13 @@ let encrypted_mxc_to_plumb ?homeserver mxc key hash iv =
 
 let canonical_json j = Yojson.Safe.sort j |> Yojson.Safe.to_string
 
+let mimetype_to_msgtype m =
+  match String.prefix m 5 with
+  | "image" -> "m.image"
+  | "video" -> "m.video"
+  | "audio" -> "m.audio"
+  | _       -> "m.file"
+
 (* Api call funcs ->
  *  Cohttp.Code.meth * string * Yojson.Safe.t option *)
 
