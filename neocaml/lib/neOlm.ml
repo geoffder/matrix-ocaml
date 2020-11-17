@@ -108,14 +108,11 @@ end
 module Sas = struct
   module KV = ToDevice.KeyVerification
 
-  type state =
-    | Created
-    | Started
-    | Accepted
-    | KeyReceived
-    | MacReceived
-    | Canceled
-
+  (** TODO: Consider improving the flow of accepting events by breaking the
+   ** state update { t with state and cancel_reason} on failure into an error
+   ** handler function, so each core function can simply follow a monadic flow
+   ** then be composed with the handler, which matches against the error and
+   ** updates t accordingly. *)
   type error =
     [ `UserCancel
     | `Timeout
@@ -168,6 +165,14 @@ module Sas = struct
     |  `CommitmentMismatch -> "Mismatched commitment"
     |  `SasMismatch        -> "Mismatched short authentication string"
     |  `UnknownError s     -> "Unknown error: " ^ s
+
+  type state =
+    | Created
+    | Started
+    | Accepted
+    | KeyReceived
+    | MacReceived
+    | Canceled of error
 
   let emoji =
     [ ("🐶", "Dog")
@@ -257,7 +262,6 @@ module Sas = struct
            ; we_started_it           : bool
            ; sas_accepted            : bool
            ; commitment              : string option
-           ; cancel_reason           : error option
            ; their_sas_key           : string option
            ; verified_devices        : string list
            ; creation_time           : Time.t
@@ -294,7 +298,6 @@ module Sas = struct
     ; we_started_it
     ; sas_accepted            = false
     ; commitment              = None
-    ; cancel_reason           = None
     ; their_sas_key           = None
     ; verified_devices        = []
     ; creation_time           = now
@@ -326,12 +329,16 @@ module Sas = struct
     { t with commitment = Some commitment }
 
   let canceled = function
-    | { state = Canceled; _ } -> true
-    | _                       -> false
+    | { state = Canceled _; _ } -> true
+    | _                         -> false
 
   let verified = function
     | { state = MacReceived; sas_accepted = true; _ } -> true
     | _                                               -> false
+
+  let cancel_reason = function
+    | { state = Canceled reason; _ } -> Some reason
+    | _                              -> None
 
   let supports_normal_mac t =
     List.exists t.mac_methods ~f:(function | Normal -> true | _ -> false)
@@ -349,7 +356,7 @@ module Sas = struct
       let n = Time.now () in
       if Time.Span.(Time.diff n t.creation_time >=. max_age
                     || Time.diff n t.last_event_time >=. max_event_timeout)
-      then true, { t with state = Canceled; cancel_reason = Some `Timeout }
+      then true, { t with state = Canceled `Timeout }
       else false, t
 
   let set_their_pubkey t pubkey =
@@ -357,16 +364,15 @@ module Sas = struct
     { t with their_sas_key = Some pubkey }
 
   let accept_sas = function
-    | { state = Canceled; _ }     -> Result.fail (`Protocol "Already canceled.")
+    | { state = Canceled _; _ }   -> Result.fail (`Protocol "Already canceled.")
     | { their_sas_key = None; _ } -> Result.fail (`Protocol "Other key not even set.")
     | t                           -> Result.return { t with sas_accepted = true }
 
   let reject_sas = function
     | { their_sas_key = None; _ } -> Result.fail (`Protocol "Other key not even set.")
-    | t -> Result.return { t with state = Canceled; cancel_reason = Some `SasMismatch }
+    | t -> Result.return { t with state = Canceled `SasMismatch }
 
-  let cancel t =
-    { t with state = Canceled; cancel_reason = Some `UserCancel }
+  let cancel t = { t with state = Canceled `UserCancel }
 
   let grouper ?filler n str =
     let f i acc c =
@@ -531,7 +537,7 @@ module Sas = struct
   let cancellation_event t =
     Result.ok_if_true (not @@ canceled t)
       ~error:(`Protocol "Sas process isn't cancelled.") >>= fun () ->
-    Result.of_option t.cancel_reason
+    Result.of_option (cancel_reason t)
       ~error:(`Protocol "Cancel reason is required.") >>= fun err ->
     ToDevice.KeyVerification
       (Cancel
@@ -547,9 +553,9 @@ module Sas = struct
     if canceled t
     then (false, t)
     else if String.equal t.transaction_id (ToDevice.KeyVerification.transaction_id content)
-    then (false, { t with state = Canceled; cancel_reason = Some `UnknownTransaction })
+    then (false, { t with state = Canceled `UnknownTransaction })
     else if String.equal t.other_olm_device.user_id sender
-    then (false, { t with state = Canceled; cancel_reason = Some `UserMismatch })
+    then (false, { t with state = Canceled `UserMismatch })
     else (true, t)
 
   let receive_accept_event t (event : ToDevice.t) =
@@ -574,10 +580,7 @@ module Sas = struct
              accept.message_authentication_code
              ~equal:KV.MacMethod.equal
         || List.length accept.short_authentication_string = 0
-        then (false, { t with
-                       state         = Canceled
-                     ; cancel_reason = Some `UnknownMethod
-                     })
+        then (false, { t with state = Canceled `UnknownMethod })
         else (true,  { t with
                        commitment           = Some accept.commitment
                      ; chosen_mac_method    = Some accept.message_authentication_code
@@ -585,9 +588,6 @@ module Sas = struct
                      ; sas_methods          = accept.short_authentication_string
                      ; state                = Accepted
                      })
-      | _ -> (false, { t with
-                       state         = Canceled
-                     ; cancel_reason = Some `UnexpectedMessage
-                     })
+      | _ -> (false, { t with state = Canceled `UnexpectedMessage })
 
 end
