@@ -535,10 +535,8 @@ module Sas = struct
   let mac_message t = mac_event t >>| event_to_message t
 
   let cancellation_event t =
-    Result.ok_if_true (not @@ canceled t)
-      ~error:(`Protocol "Sas process isn't cancelled.") >>= fun () ->
     Result.of_option (cancel_reason t)
-      ~error:(`Protocol "Cancel reason is required.") >>= fun err ->
+      ~error:(`Protocol "Sas process isn't cancelled.") >>= fun err ->
     ToDevice.KeyVerification
       (Cancel
          { transaction_id = t.transaction_id
