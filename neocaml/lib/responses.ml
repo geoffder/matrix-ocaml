@@ -14,7 +14,18 @@ module EventList = struct
 end
 
 module ToDeviceList = struct
-  type t = { events : ToDevice.t list } [@@deriving of_yojson]
+  type t = { events : ToDevice.t list }
+
+  let of_yojson j =
+    let open Result.Monad_infix in
+    let collect acc j =
+      match ToDevice.of_yojson j with
+      | Ok r -> r :: acc
+      | _    -> acc
+    in
+    U.member "events" j |> list_of_yojson >>| fun l ->
+    List.fold ~init:[] ~f:collect (List.rev l)
+    |> fun events -> { events }
 end
 
 module StateList = struct
