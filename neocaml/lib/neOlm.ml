@@ -106,6 +106,8 @@ module DeviceMap = struct
 end
 
 module Sas = struct
+  module KV = ToDevice.KeyVerification
+
   type state =
     | Created
     | Started
@@ -127,39 +129,6 @@ module Sas = struct
     | `SasMismatch
     | `UnknownError of string
     ]
-
-  type sas_method = Emoji | Decimal
-
-  type mac_method = Normal | Old
-
-  type key_agreement_protocol = V1 | V2
-
-  let key_agreement_protocol_to_string = function
-    | V1 -> "curve25519"
-    | V2 -> "curve25519-hkdf-sha256"
-
-  let key_agreement_protocol_of_string = function
-    | "curve25519"             -> Result.return V1
-    | "curve25519-hkdf-sha256" -> Result.return V2
-    | _                        -> Result.fail `UnknownMethod
-
-  let mac_method_to_string = function
-    | Normal -> "hkdf-hmac-sha256"
-    | Old    -> "hmac-sha256"
-
-  let mac_method_of_string = function
-    | "hkdf-hmac-sha256" -> Result.return Normal
-    | "hmac-sha256"      -> Result.return Old
-    | _                  -> Result.fail `UnknownMethod
-
-  let sas_method_to_string = function
-    | Emoji   -> "emoji"
-    | Decimal -> "decimal"
-
-  let sas_method_of_string = function
-    | "emoji"   -> Result.return Emoji
-    | "decimal" -> Result.return Decimal
-    | _         -> Result.fail `UnknownMethod
 
   let error_of_code = function
     | "m.user_cancel"         -> `UserCancel
@@ -279,11 +248,11 @@ module Sas = struct
            ; own_fp_key              : string
            ; other_olm_device        : Device.t
            ; transaction_id          : string
-           ; sas_methods             : sas_method list
-           ; mac_methods             : mac_method list
-           ; chosen_mac_method       : mac_method option
-           ; key_agreement_protocols : key_agreement_protocol list
-           ; chosen_key_agreement    : key_agreement_protocol option
+           ; sas_methods             : KV.SasMethod.t list
+           ; mac_methods             : KV.MacMethod.t list
+           ; chosen_mac_method       : KV.MacMethod.t option
+           ; key_agreement_protocols : KV.KeyAgreementProtocol.t list
+           ; chosen_key_agreement    : KV.KeyAgreementProtocol.t option
            ; state                   : state
            ; we_started_it           : bool
            ; sas_accepted            : bool
@@ -297,9 +266,9 @@ module Sas = struct
 
   let create
       ?tx_id
-      ?(sas_methods=[ Emoji; Decimal ])
-      ?(mac_methods=[ Normal; Old ])
-      ?(key_agreement_protocols=[ V1; V2 ])
+      ?(sas_methods=[ KV.SasMethod.Emoji; Decimal ])
+      ?(mac_methods=[ KV.MacMethod.Normal; Old ])
+      ?(key_agreement_protocols=[ KV.KeyAgreementProtocol.V1; V2 ])
       ?(we_started_it=true)
       own_user
       own_device
@@ -332,8 +301,6 @@ module Sas = struct
     ; last_event_time         = now
     }
 
-  (* NOTE: Not sure if I should use this way, where you simply get an error, or
-   * should return a t with the cancel code included, more like the nio vers. *)
   let from_key_verification_start
       own_user
       own_device
@@ -341,42 +308,12 @@ module Sas = struct
       other_olm_device
       (event : ToDevice.KeyVerification.StartSAS.t)
     =
-    List.map ~f:sas_method_of_string event.short_authentication_string
-    |> Result.all >>= fun sas_methods ->
-    List.map ~f:mac_method_of_string event.message_authentication_codes
-    |> Result.all >>= fun mac_methods ->
-    List.map ~f:key_agreement_protocol_of_string event.key_agreement_protocols
-    |> Result.all >>= fun key_agreement_protocols ->
     create
       ~tx_id:event.transaction_id
       ~we_started_it:false
-      ~sas_methods
-      ~mac_methods
-      ~key_agreement_protocols
-      own_user
-      own_device
-      own_fp_key
-      other_olm_device >>= fun t ->
-    Olm.Sas.pubkey t.sas >>= fun pubkey ->
-    ToDevice.KeyVerification.StartSAS.to_yojson event
-    |> Api.canonical_json
-    |> ( ^ )  pubkey
-    |> Olm.Utility.sha256 util >>= fun commitment ->
-    Result.return { t with commitment = Some commitment }
-
-  (* I don't really like this way, since you need to check the error field
-   * to know if there was a problem, rather than knowing right away from the
-   * Result type. *)
-  let from_key_verification_start'
-      own_user
-      own_device
-      own_fp_key
-      other_olm_device
-      (event : ToDevice.KeyVerification.StartSAS.t)
-    =
-    create
-      ~tx_id:event.transaction_id
-      ~we_started_it:false
+      ~sas_methods:event.short_authentication_string
+      ~mac_methods:event.message_authentication_codes
+      ~key_agreement_protocols:event.key_agreement_protocols
       own_user
       own_device
       own_fp_key
@@ -385,36 +322,8 @@ module Sas = struct
     ToDevice.KeyVerification.StartSAS.to_yojson event
     |> Api.canonical_json
     |> ( ^ )  pubkey
-    |> Olm.Utility.sha256 util >>= fun commitment ->
-    let sas_vers_res =
-      Result.ok_if_true (String.equal event.v_method sas_vers) ~error:`UnknownMethod
-    in
-    let methods_res =
-      List.map ~f:sas_method_of_string event.short_authentication_string
-      |> Result.all in
-    let protocols_res =
-      List.map ~f:key_agreement_protocol_of_string event.key_agreement_protocols
-      |> Result.all in
-    let macs_res =
-      List.map ~f:mac_method_of_string event.message_authentication_codes
-      |> Result.all in
-    match sas_vers_res, methods_res, protocols_res, macs_res with
-    | Ok (), Ok sas_methods, Ok key_agreement_protocols, Ok mac_methods ->
-      Result.return { t with
-                      sas_methods
-                    ; mac_methods
-                    ; key_agreement_protocols
-                    ; commitment = Some commitment
-                    }
-    | _, _, _, _ ->
-      Result.return { t with
-                      sas_methods             = []
-                    ; mac_methods             = []
-                    ; key_agreement_protocols = []
-                    ; commitment              = Some commitment
-                    ; state                   = Canceled
-                    ; cancel_reason           = Some `UnknownMethod
-                    }
+    |> Olm.Utility.sha256 util >>| fun commitment ->
+    { t with commitment = Some commitment }
 
   let canceled = function
     | { state = Canceled; _ } -> true
@@ -530,16 +439,14 @@ module Sas = struct
       ~error:(`Protocol "Not started by us, can't send.") >>= fun () ->
     Result.ok_if_true (not @@ canceled t)
       ~error:(`Protocol "Verification was canceled, can't send.") >>= fun () ->
-    let key_agreement_protocols =
-      List.map ~f:key_agreement_protocol_to_string t.key_agreement_protocols in
     ToDevice.KeyVerification
       (StartSAS
          { transaction_id                = t.transaction_id
          ; v_method                      = sas_vers
-         ; key_agreement_protocols
+         ; key_agreement_protocols       = t.key_agreement_protocols
          ; hashes                        = [ hash_v1 ]
-         ; message_authentication_codes  = List.map ~f:mac_method_to_string t.mac_methods
-         ; short_authentication_string   = List.map ~f:sas_method_to_string t.sas_methods
+         ; message_authentication_codes  = t.mac_methods
+         ; short_authentication_string   = t.sas_methods
          })
     |> Result.return
 
@@ -553,18 +460,16 @@ module Sas = struct
       ~error:(`Protocol "Verification was canceled, can't accept offer.") >>= fun () ->
     Result.of_option t.commitment
       ~error:(`Protocol "No commitment, can't accept offer.") >>= fun commitment ->
-    let sas_methods = List.map ~f:sas_method_to_string t.sas_methods in
-    let chosen_mac =
-      mac_method_to_string (if supports_normal_mac t then Normal else Old) in
+    let chosen_mac = if supports_normal_mac t then KV.MacMethod.Normal else Old in
     let chosen_agreement =
-      key_agreement_protocol_to_string (if supports_agreement_v2 t then V2 else V1) in
+      if supports_agreement_v2 t then KV.KeyAgreementProtocol.V2 else V1 in
     ToDevice.KeyVerification
       (Accept { transaction_id              = t.transaction_id
               ; v_method                    = sas_vers
               ; key_agreement_protocol      = chosen_agreement
               ; hash                        = hash_v1
               ; message_authentication_code = chosen_mac
-              ; short_authentication_string = sas_methods
+              ; short_authentication_string = t.sas_methods
               ; commitment
               })
     |> Result.return
@@ -646,4 +551,43 @@ module Sas = struct
     else if String.equal t.other_olm_device.user_id sender
     then (false, { t with state = Canceled; cancel_reason = Some `UserMismatch })
     else (true, t)
+
+  let receive_accept_event t (event : ToDevice.t) =
+    begin
+      match event with
+      | { sender; content = KeyVerification (Accept e as kv); _ } ->
+        Result.return (sender, kv, e)
+      | _ -> Result.fail (`Protocol "KeyVerification Accept event required.")
+    end >>| fun (sender, kv, accept) ->
+    match event_ok t sender kv with
+    | false, t -> (false, t)
+    | true, _  ->
+      match t.state with
+      | Created ->
+        if not @@ List.mem
+            t.key_agreement_protocols
+            accept.key_agreement_protocol
+            ~equal:KV.KeyAgreementProtocol.equal
+        || not @@ String.equal accept.hash hash_v1
+        || not @@ List.mem
+             t.mac_methods
+             accept.message_authentication_code
+             ~equal:KV.MacMethod.equal
+        || List.length accept.short_authentication_string = 0
+        then (false, { t with
+                       state         = Canceled
+                     ; cancel_reason = Some `UnknownMethod
+                     })
+        else (true,  { t with
+                       commitment           = Some accept.commitment
+                     ; chosen_mac_method    = Some accept.message_authentication_code
+                     ; chosen_key_agreement = Some accept.key_agreement_protocol
+                     ; sas_methods          = accept.short_authentication_string
+                     ; state                = Accepted
+                     })
+      | _ -> (false, { t with
+                       state         = Canceled
+                     ; cancel_reason = Some `UnexpectedMessage
+                     })
+
 end
