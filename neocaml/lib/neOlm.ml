@@ -577,7 +577,7 @@ module Sas = struct
     | None   -> Result.fail (`Protocol "No existing commitment.")
     | Some c ->
       accept_verification_event t >>= fun event ->
-      let content = ToDevice.to_yojson event
+      let content = ToDevice.content_to_yojson event
                     |> Yojson.Safe.Util.member "content"
                     |> Api.canonical_json
       in
@@ -591,4 +591,59 @@ module Sas = struct
     |> Result.return
 
   let share_key_message t = share_key_event t >>| event_to_message t
+
+  let mac_event t =
+    Result.ok_if_true t.sas_accepted
+      ~error:(`Protocol "SAS string wasn't yet accepted.") >>= fun () ->
+    Result.ok_if_true (canceled t)
+      ~error:(`Protocol "Verification was canceled, can't generate MAC") >>= fun () ->
+    Result.of_option t.chosen_mac_method
+      ~error:(`Protocol "No MAC method has been chosen yet.") >>= fun mac_method ->
+    let key_id = "ed25519:" ^ t.own_device in
+    let info   =
+      sprintf "MATRIX_KEY_VERIFICATION_MAC%s%s%s%s%s"
+        t.own_user                 t.own_device
+        t.other_olm_device.user_id t.other_olm_device.id
+        t.transaction_id
+    in
+    let calc =
+      match mac_method with
+      | Normal -> Olm.Sas.calculate_mac
+      | Old    -> Olm.Sas.calculate_mac_long_kdf
+    in
+    calc t.sas t.own_fp_key (info ^ key_id) >>= fun mac ->
+    calc t.sas key_id (info ^ "KEY_IDS")    >>= fun keys ->
+    ToDevice.KeyVerification
+      (Mac
+         { transaction_id = t.transaction_id
+         ; mac            = Map.of_alist_exn (module String) [ ("key_id", mac) ]
+         ; keys
+         })
+    |> Result.return
+
+  let mac_message t = mac_event t >>| event_to_message t
+
+  let cancellation_event t =
+    Result.ok_if_true (not @@ canceled t)
+      ~error:(`Protocol "Sas process isn't cancelled.") >>= fun () ->
+    Result.of_option t.cancel_reason
+      ~error:(`Protocol "Cancel reason is required.") >>= fun err ->
+    ToDevice.KeyVerification
+      (Cancel
+         { transaction_id = t.transaction_id
+         ; code           = error_to_code err
+         ; reason         = error_to_reason err
+         })
+    |> Result.return
+
+  let cancellation_message t = cancellation_event t >>| event_to_message t
+
+  let event_ok t sender content =
+    if canceled t
+    then (false, t)
+    else if String.equal t.transaction_id (ToDevice.KeyVerification.transaction_id content)
+    then (false, { t with state = Canceled; cancel_reason = Some `UnknownTransaction })
+    else if String.equal t.other_olm_device.user_id sender
+    then (false, { t with state = Canceled; cancel_reason = Some `UserMismatch })
+    else (true, t)
 end
