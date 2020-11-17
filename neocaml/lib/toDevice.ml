@@ -187,8 +187,16 @@ module KeyVerification = struct
   end
 
   module StartSAS = struct
+    type v_method = string
+
+    let v_method_of_yojson = function
+      |`String ("m.sas.v1" as s) -> Result.return s
+      | _                        -> Result.fail "Accept method must by 'm.sas.v1'."
+
+    let v_method_to_yojson s = `String s
+
     type t = { transaction_id               : string
-             ; v_method                     : string [@key "method"]
+             ; v_method                     : v_method [@key "method"]
              ; key_agreement_protocols      : KeyAgreementProtocol.t list
              ; hashes                       : string list
              ; message_authentication_codes : MacMethod.t list
