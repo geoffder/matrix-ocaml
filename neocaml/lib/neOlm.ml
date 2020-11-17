@@ -119,13 +119,12 @@ module Sas = struct
     | `Timeout
     | `UnknownTransaction
     | `UnknownMethod
-    | `UnexpectedMethod
+    | `UnexpectedMessage
     | `KeyMismatch
     | `UserMismatch
     | `InvalidMessage
     | `CommitmentMismatch
     | `SasMismatch
-    | `Protocol of string
     | `UnknownError of string
     ]
 
@@ -162,18 +161,44 @@ module Sas = struct
     | "decimal" -> Result.return Decimal
     | _         -> Result.fail `UnknownMethod
 
-  let error_of_string = function
+  let error_of_code = function
     | "m.user_cancel"         -> `UserCancel
     | "m.timeout"             -> `Timeout
     | "m.unknown_transaction" -> `UnknownTransaction
     | "m.unknown_method"      -> `UnknownMethod
-    | "m.unexpected_method"   -> `UnexpectedMethod
+    | "m.unexpected_message"  -> `UnexpectedMessage
     | "m.key_mismatch"        -> `KeyMismatch
-    | "m.user_mismatch"       -> `UserMismatch
+    | "m.user_error"          -> `UserMismatch
     | "m.invalid_message"     -> `InvalidMessage
     | "m.commitment_mismatch" -> `CommitmentMismatch
     | "m.sas_mismatch"        -> `SasMismatch
     | s                       -> `UnknownError s
+
+  let error_to_code = function
+    |  `UserCancel         -> "m.user_cancel"
+    |  `Timeout            -> "m.timeout"
+    |  `UnknownTransaction -> "m.unknown_transaction"
+    |  `UnknownMethod      -> "m.unknown_method"
+    |  `UnexpectedMessage  -> "m.unexpected_message"
+    |  `KeyMismatch        -> "m.key_mismatch"
+    |  `UserMismatch       -> "m.user_error"
+    |  `InvalidMessage     -> "m.invalid_message"
+    |  `CommitmentMismatch -> "m.commitment_mismatch"
+    |  `SasMismatch        -> "m.sas_mismatch"
+    |  `UnknownError s     -> s
+
+  let error_to_reason = function
+    |  `UserCancel         -> "Canceled by user"
+    |  `Timeout            -> "Timed out"
+    |  `UnknownTransaction -> "Unknown transaction"
+    |  `UnknownMethod      -> "Unknown method"
+    |  `UnexpectedMessage  -> "Unexpected message"
+    |  `KeyMismatch        -> "Key mismatch"
+    |  `UserMismatch       -> "User mismatch"
+    |  `InvalidMessage     -> "Invalid message"
+    |  `CommitmentMismatch -> "Mismatched commitment"
+    |  `SasMismatch        -> "Mismatched short authentication string"
+    |  `UnknownError s     -> "Unknown error: " ^ s
 
   let emoji =
     [ ("🐶", "Dog")
