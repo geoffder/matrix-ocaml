@@ -108,12 +108,7 @@ end
 module Sas = struct
   module KV = ToDevice.KeyVerification
 
-  (** TODO: Consider improving the flow of accepting events by breaking the
-   ** state update { t with state and cancel_reason} on failure into an error
-   ** handler function, so each core function can simply follow a monadic flow
-   ** then be composed with the handler, which matches against the error and
-   ** updates t accordingly. *)
-  type error =
+  type reason =
     [ `UserCancel
     | `Timeout
     | `UnknownTransaction
@@ -124,10 +119,12 @@ module Sas = struct
     | `InvalidMessage
     | `CommitmentMismatch
     | `SasMismatch
-    | `UnknownError of string
+    | `Unknown of string
     ]
 
-  let error_of_code = function
+  type error = [ `Reason of reason | `Protocol of string ]
+
+  let reason_of_code = function
     | "m.user_cancel"         -> `UserCancel
     | "m.timeout"             -> `Timeout
     | "m.unknown_transaction" -> `UnknownTransaction
@@ -138,9 +135,9 @@ module Sas = struct
     | "m.invalid_message"     -> `InvalidMessage
     | "m.commitment_mismatch" -> `CommitmentMismatch
     | "m.sas_mismatch"        -> `SasMismatch
-    | s                       -> `UnknownError s
+    | s                       -> `Unknown s
 
-  let error_to_code = function
+  let reason_to_code = function
     |  `UserCancel         -> "m.user_cancel"
     |  `Timeout            -> "m.timeout"
     |  `UnknownTransaction -> "m.unknown_transaction"
@@ -151,9 +148,9 @@ module Sas = struct
     |  `InvalidMessage     -> "m.invalid_message"
     |  `CommitmentMismatch -> "m.commitment_mismatch"
     |  `SasMismatch        -> "m.sas_mismatch"
-    |  `UnknownError s     -> s
+    |  `Unknown s          -> s
 
-  let error_to_reason = function
+  let reason_to_string = function
     |  `UserCancel         -> "Canceled by user"
     |  `Timeout            -> "Timed out"
     |  `UnknownTransaction -> "Unknown transaction"
@@ -164,7 +161,7 @@ module Sas = struct
     |  `InvalidMessage     -> "Invalid message"
     |  `CommitmentMismatch -> "Mismatched commitment"
     |  `SasMismatch        -> "Mismatched short authentication string"
-    |  `UnknownError s     -> "Unknown error: " ^ s
+    |  `Unknown s          -> "Unknown reason: " ^ s
 
   type state =
     | Created
@@ -172,7 +169,7 @@ module Sas = struct
     | Accepted
     | KeyReceived
     | MacReceived
-    | Canceled of error
+    | Canceled of reason
 
   let emoji =
     [ ("🐶", "Dog")
@@ -336,6 +333,10 @@ module Sas = struct
     | { state = MacReceived; sas_accepted = true; _ } -> true
     | _                                               -> false
 
+  let created = function
+    | { state = Created; _} -> true
+    | _                     -> false
+
   let cancel_reason = function
     | { state = Canceled reason; _ } -> Some reason
     | _                              -> None
@@ -345,6 +346,11 @@ module Sas = struct
 
   let supports_agreement_v2 t =
     List.exists t.key_agreement_protocols ~f:(function | V2 -> true | _ -> false)
+
+  let apply_sas_error t = function
+    | Ok _ as ok        -> ok
+    | Error (`Reason r) -> Result.return { t with state = Canceled r }
+    | Error _ as err    -> err
 
   let event_to_message t e =
     ToDevice.to_message e t.other_olm_device.user_id t.other_olm_device.id
@@ -540,52 +546,41 @@ module Sas = struct
     ToDevice.KeyVerification
       (Cancel
          { transaction_id = t.transaction_id
-         ; code           = error_to_code err
-         ; reason         = error_to_reason err
+         ; code           = reason_to_code err
+         ; reason         = reason_to_string err
          })
     |> Result.return
 
   let cancellation_message t = cancellation_event t >>| event_to_message t
 
-  let event_ok t sender content =
-    if canceled t
-    then (false, t)
-    else if String.equal t.transaction_id (ToDevice.KeyVerification.transaction_id content)
-    then (false, { t with state = Canceled `UnknownTransaction })
-    else if String.equal t.other_olm_device.user_id sender
-    then (false, { t with state = Canceled `UserMismatch })
-    else (true, t)
+  let event_ok t sender tx_id =
+    Result.ok_if_true (canceled t) ~error:(`Protocol "Already canceled") >>= fun () ->
+    Result.ok_if_true (String.equal t.transaction_id tx_id)
+      ~error:`UnknownTransaction >>= fun () ->
+    Result.ok_if_true (String.equal t.other_olm_device.user_id sender)
+      ~error:`UserMismatch
 
-  let receive_accept_event t (event : ToDevice.t) =
-    begin
-      match event with
-      | { sender; content = KeyVerification (Accept e as kv); _ } ->
-        Result.return (sender, kv, e)
-      | _ -> Result.fail (`Protocol "KeyVerification Accept event required.")
-    end >>| fun (sender, kv, accept) ->
-    match event_ok t sender kv with
-    | false, t -> (false, t)
-    | true, _  ->
-      match t.state with
-      | Created ->
-        if not @@ List.mem
-            t.key_agreement_protocols
-            accept.key_agreement_protocol
-            ~equal:KV.KeyAgreementProtocol.equal
-        || not @@ String.equal accept.hash hash_v1
-        || not @@ List.mem
-             t.mac_methods
-             accept.message_authentication_code
-             ~equal:KV.MacMethod.equal
-        || List.length accept.short_authentication_string = 0
-        then (false, { t with state = Canceled `UnknownMethod })
-        else (true,  { t with
-                       commitment           = Some accept.commitment
-                     ; chosen_mac_method    = Some accept.message_authentication_code
-                     ; chosen_key_agreement = Some accept.key_agreement_protocol
-                     ; sas_methods          = accept.short_authentication_string
-                     ; state                = Accepted
-                     })
-      | _ -> (false, { t with state = Canceled `UnexpectedMessage })
-
+  let receive_accept_event t sender (event : ToDevice.KeyVerification.Accept.t) =
+    event_ok t sender event.transaction_id >>= fun () ->
+    Result.ok_if_true (created t) ~error:`UnexpectedMessage >>= fun () ->
+    Result.ok_if_true ~error:`UnknownMethod begin
+      not @@ List.mem
+        t.key_agreement_protocols
+        event.key_agreement_protocol
+        ~equal:KV.KeyAgreementProtocol.equal
+      || not @@ String.equal event.hash hash_v1
+      || not @@ List.mem
+        t.mac_methods
+        event.message_authentication_code
+        ~equal:KV.MacMethod.equal
+      || List.length event.short_authentication_string = 0
+    end >>= fun () ->
+    { t with
+      commitment           = Some event.commitment
+    ; chosen_mac_method    = Some event.message_authentication_code
+    ; chosen_key_agreement = Some event.key_agreement_protocol
+    ; sas_methods          = event.short_authentication_string
+    ; state                = Accepted
+    } |> Result.return
+    |> apply_sas_error t
 end
