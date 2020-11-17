@@ -94,6 +94,81 @@ module Dummy = struct
 end
 
 module KeyVerification = struct
+  module KeyAgreementProtocol = struct
+    type t = V1 | V2
+
+    let of_string = function
+      | "curve25519"             -> Result.return V1
+      | "curve25519-hkdf-sha256" -> Result.return V2
+      | _                        -> Result.fail "Invalid key agreement protocol."
+
+    let to_string = function
+      | V1 -> "curve25519"
+      | V2 -> "curve25519-hkdf-sha256"
+
+    let equal a b =
+      match a, b with
+      | V1, V1 -> true
+      | V2, V2 -> true
+      | _      -> false
+
+    let of_yojson = function
+      | `String s -> of_string s
+      | _         -> Result.fail "Key agreement protocol should be string."
+
+    let to_yojson t = `String (to_string t)
+  end
+
+  module MacMethod = struct
+    type t = Normal | Old
+
+    let to_string = function
+      | Normal -> "hkdf-hmac-sha256"
+      | Old    -> "hmac-sha256"
+
+    let of_string = function
+      | "hkdf-hmac-sha256" -> Result.return Normal
+      | "hmac-sha256"      -> Result.return Old
+      | _                  -> Result.fail "Invalid message authentication code."
+
+    let equal a b =
+      match a, b with
+      | Normal, Normal -> true
+      | Old,    Old    -> true
+      | _              -> false
+
+    let of_yojson = function
+      | `String s -> of_string s
+      | _         -> Result.fail "Message authentication code should be string."
+
+    let to_yojson t = `String (to_string t)
+  end
+
+  module SasMethod = struct
+    type t = Emoji | Decimal
+
+    let to_string = function
+      | Emoji   -> "emoji"
+      | Decimal -> "decimal"
+
+    let of_string = function
+      | "emoji"   -> Result.return Emoji
+      | "decimal" -> Result.return Decimal
+      | _         -> Result.fail "Invalid short string authentication string."
+
+    let equal a b =
+      match a, b with
+      | Emoji,   Emoji   -> true
+      | Decimal, Decimal -> true
+      | _                -> false
+
+    let of_yojson = function
+      | `String s -> of_string s
+      | _         -> Result.fail "Short string authentication string should be string."
+
+    let to_yojson t = `String (to_string t)
+  end
+
   module Request = struct
     type t = { from_device    : string
              ; transaction_id : string
@@ -112,12 +187,12 @@ module KeyVerification = struct
   end
 
   module StartSAS = struct
-    type t = { transaction_id                : string
-             ; v_method                      : string [@key "method"]
-             ; key_agreement_protocols       : string list
-             ; hashes                        : string list
-             ; message_authentication_codes  : string list
-             ; short_authentication_string   : string list
+    type t = { transaction_id               : string
+             ; v_method                     : string [@key "method"]
+             ; key_agreement_protocols      : KeyAgreementProtocol.t list
+             ; hashes                       : string list
+             ; message_authentication_codes : MacMethod.t list
+             ; short_authentication_string  : SasMethod.t list
              } [@@deriving yojson]
   end
 
@@ -139,10 +214,10 @@ module KeyVerification = struct
 
     type t = { transaction_id              : string
              ; v_method                    : v_method [@key "method"]
-             ; key_agreement_protocol      : string
+             ; key_agreement_protocol      : KeyAgreementProtocol.t
              ; hash                        : string
-             ; message_authentication_code : string
-             ; short_authentication_string : string list
+             ; message_authentication_code : MacMethod.t
+             ; short_authentication_string : SasMethod.t list
              ; commitment                  : string
              } [@@deriving yojson]
   end
