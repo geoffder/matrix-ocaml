@@ -188,13 +188,22 @@ module KeyVerification = struct
     | Key      _ -> "m.key.verification.key"
     | Mac      _ -> "m.key.verification.mac"
 
+  let transaction_id = function
+    | Request  e -> e.transaction_id
+    | Cancel   e -> e.transaction_id
+    | Start    e -> e.transaction_id
+    | StartSAS e -> e.transaction_id
+    | Accept   e -> e.transaction_id
+    | Key      e -> e.transaction_id
+    | Mac      e -> e.transaction_id
+
   let is_sas c =
     try U.member "method" c |> U.to_string |> String.equal "m.sas.v1"
     with _ -> false
 
   let of_yojson j =
     let open Result in
-    U.member "type" j |> string_of_yojson >>= fun m_type ->
+    U.member "type" j   |> string_of_yojson >>= fun m_type ->
     let c = U.member "content" j in
     match String.chop_prefix_if_exists ~prefix:"m.key.verification." m_type with
     | "request"             -> Request.of_yojson c   >>| request
@@ -220,7 +229,7 @@ module KeyVerification = struct
     `Assoc [ ("type", `String (to_m_type t)); ("content", content) ]
 end
 
-type t =
+type content =
   | NewDevice of NewDevice.t
   | RoomKey of RoomKey.t
   | RoomKeyRequest of RoomKeyRequest.t
@@ -237,6 +246,11 @@ let dummy e              = Dummy e
 let key_verification e   = KeyVerification e
 let unknown e            = Unknown e
 
+type t = { sender  : string
+         ; m_type  : string
+         ; content : content
+         }
+
 let to_m_type = function
   | NewDevice        _ -> "m.new_device"
   | RoomKey          _ -> "m.room_key"
@@ -250,18 +264,22 @@ let is_key_veri m = String.is_prefix m ~prefix:"m.key.verification."
 
 let of_yojson j =
   let open Result in
-  match U.member "type" j |> U.to_string_option with
-  | Some m when is_key_veri m   -> KeyVerification.of_yojson j  >>| key_verification
-  | Some "m.new_device"         -> NewDevice.of_yojson j        >>| new_device
-  | Some "m.room_key"           -> RoomKey.of_yojson j          >>| room_key
-  | Some "m.room_key_request"   -> RoomKeyRequest.of_yojson j   >>| room_key_request
-  | Some "m.forwarded_room_key" -> ForwardedRoomKey.of_yojson j >>| forwarded_room_key
-  | Some "m.dummy"              -> Dummy.of_yojson j            >>| dummy
-  (* | Some s                      -> Result.fail ("Invalid event type: " ^ s) *)
-  | Some _                      -> Result.return j              >>| unknown
-  | None                        -> Result.fail "Missing event type field."
+  U.member "type" j   |> string_of_yojson >>= fun m_type ->
+  U.member "sender" j |> string_of_yojson >>= fun sender ->
+  begin
+    match m_type with
+    | m when is_key_veri m   -> KeyVerification.of_yojson j  >>| key_verification
+    | "m.new_device"         -> NewDevice.of_yojson j        >>| new_device
+    | "m.room_key"           -> RoomKey.of_yojson j          >>| room_key
+    | "m.room_key_request"   -> RoomKeyRequest.of_yojson j   >>| room_key_request
+    | "m.forwarded_room_key" -> ForwardedRoomKey.of_yojson j >>| forwarded_room_key
+    | "m.dummy"              -> Dummy.of_yojson j            >>| dummy
+    (* | s                      -> Result.fail ("Invalid event type: " ^ s) *)
+    |  _                      -> Result.return j              >>| unknown
+  end >>| fun content ->
+  { sender; m_type; content }
 
-let to_yojson = function
+let content_to_yojson = function
   | NewDevice        e -> NewDevice.to_yojson e
   | RoomKey          e -> RoomKey.to_yojson e
   | RoomKeyRequest   e -> RoomKeyRequest.to_yojson e
@@ -274,7 +292,7 @@ let to_message t recipient recipient_device : Yojson.Safe.t =
   `Assoc [
     ("messages", `Assoc [
         (recipient, `Assoc [
-            (recipient_device, to_yojson t)
+            (recipient_device, content_to_yojson t)
           ])
       ])
   ]
