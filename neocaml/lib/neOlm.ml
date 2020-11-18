@@ -122,7 +122,12 @@ module Sas = struct
     | `Unknown of string
     ]
 
-  type error = [ `Reason of reason | `Protocol of string ]
+  type error =
+    [ `Reason of reason
+    | `Protocol of string
+    | `EmojiFail of string
+    | `DecimalsFail of string
+    ]
 
   let reason_of_code = function
     | "m.user_cancel"         -> `UserCancel
@@ -498,7 +503,8 @@ module Sas = struct
                     |> Yojson.Safe.Util.member "content"
                     |> Api.canonical_json
       in
-      Olm.Utility.sha256 util (key ^ content) >>| String.equal c
+      Olm.Utility.sha256 util (key ^ content) >>= fun sha ->
+      Result.ok_if_true (String.equal c sha) ~error:(`Reason `CommitmentMismatch)
 
   let share_key_event t =
     Result.ok_if_true (not @@ canceled t)
@@ -556,31 +562,48 @@ module Sas = struct
   let event_ok t sender tx_id =
     Result.ok_if_true (canceled t) ~error:(`Protocol "Already canceled") >>= fun () ->
     Result.ok_if_true (String.equal t.transaction_id tx_id)
-      ~error:`UnknownTransaction >>= fun () ->
+      ~error:(`Reason `UnknownTransaction) >>= fun () ->
     Result.ok_if_true (String.equal t.other_olm_device.user_id sender)
-      ~error:`UserMismatch
+      ~error:(`Reason `UserMismatch)
 
   let receive_accept_event t sender (event : ToDevice.KeyVerification.Accept.t) =
-    event_ok t sender event.transaction_id >>= fun () ->
-    Result.ok_if_true (created t) ~error:`UnexpectedMessage >>= fun () ->
-    Result.ok_if_true ~error:`UnknownMethod begin
-      not @@ List.mem
-        t.key_agreement_protocols
-        event.key_agreement_protocol
-        ~equal:KV.KeyAgreementProtocol.equal
-      || not @@ String.equal event.hash hash_v1
-      || not @@ List.mem
-        t.mac_methods
-        event.message_authentication_code
-        ~equal:KV.MacMethod.equal
-      || List.length event.short_authentication_string = 0
-    end >>= fun () ->
-    { t with
-      commitment           = Some event.commitment
-    ; chosen_mac_method    = Some event.message_authentication_code
-    ; chosen_key_agreement = Some event.key_agreement_protocol
-    ; sas_methods          = event.short_authentication_string
-    ; state                = Accepted
-    } |> Result.return
-    |> apply_sas_error t
+    begin
+      event_ok t sender event.transaction_id >>= fun () ->
+      Result.ok_if_true (created t) ~error:(`Reason `UnexpectedMessage) >>= fun () ->
+      Result.ok_if_true ~error:(`Reason `UnknownMethod) begin
+        List.mem
+          t.key_agreement_protocols
+          event.key_agreement_protocol
+          ~equal:KV.KeyAgreementProtocol.equal
+        && String.equal event.hash hash_v1
+        && List.mem
+          t.mac_methods
+          event.message_authentication_code
+          ~equal:KV.MacMethod.equal
+        && List.length event.short_authentication_string > 0
+      end >>= fun () ->
+      { t with
+        commitment           = Some event.commitment
+      ; chosen_mac_method    = Some event.message_authentication_code
+      ; chosen_key_agreement = Some event.key_agreement_protocol
+      ; sas_methods          = event.short_authentication_string
+      ; state                = Accepted
+      } |> Result.return
+    end |> apply_sas_error t
+
+  let receive_key_event t sender (event : ToDevice.KeyVerification.Key.t) =
+    begin
+      Result.ok_if_true ~error:(`Reason `UnexpectedMessage) begin
+        Option.is_none t.their_sas_key
+        && (t.state |> function | Accepted | Started -> true | _ -> false)
+      end >>= fun () ->
+      event_ok t sender event.transaction_id >>= fun () ->
+      begin
+        if t.we_started_it
+        then check_commitment t event.key
+        else Result.return ()
+      end >>= fun () ->
+      set_their_pubkey t event.key >>| fun t ->
+      { t with state = KeyReceived }
+    end |> apply_sas_error t
 end
