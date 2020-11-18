@@ -27,6 +27,16 @@ let int_of_bin_exn s =
   |> String.foldi ~init:0
     ~f:(fun i sum c -> sum + (char_to_bit c * (Int.pow 2 i)))
 
+let map_fold_result ~init ~f m =
+  with_return begin fun { return } ->
+    Result.return @@
+    Map.fold m ~init ~f:begin fun ~key ~data acc ->
+      match f acc ~key ~data with
+      | Ok r         -> r
+      | Error _ as e -> return e
+    end
+  end
+
 module Device = struct
   type trust_state = Unset | Verified | Blacklisted | Ignored
 
@@ -595,7 +605,7 @@ module Sas = struct
     begin
       Result.ok_if_true ~error:(`Reason `UnexpectedMessage) begin
         Option.is_none t.their_sas_key
-        && (t.state |> function | Accepted | Started -> true | _ -> false)
+        && (t.state |> function Accepted | Started -> true | _ -> false)
       end >>= fun () ->
       event_ok t sender event.transaction_id >>= fun () ->
       begin
@@ -605,5 +615,55 @@ module Sas = struct
       end >>= fun () ->
       set_their_pubkey t event.key >>| fun t ->
       { t with state = KeyReceived }
+    end |> apply_sas_error t
+
+  let verify_devices t calc_mac mac_map =
+    let id_split key_id =
+      match String.split ~on:':' key_id with
+      | [ key_type; device_id ] -> Result.return (key_type, device_id)
+      | _                       -> Result.fail (`Reason `InvalidMessage)
+    in
+    let verify devs ~key:key_id ~data:key_mac =
+      id_split key_id >>= fun (key_type, device_id) ->
+      Result.ok_if_true (String.equal key_type "ed25519")
+        ~error:(`Reason `KeyMismatch) >>= fun () ->
+      if String.equal device_id t.other_olm_device.id then
+        calc_mac t.other_olm_device.keys.ed25519 >>= fun mac ->
+        Result.ok_if_true ~error:(`Reason `KeyMismatch)
+          (String.equal key_mac mac) >>| fun () ->
+        device_id :: devs
+      else Result.return devs
+    in
+    map_fold_result ~init:[] ~f:verify mac_map >>= fun devices ->
+    Result.ok_if_true (List.length devices > 0) ~error:(`Reason `KeyMismatch) >>| fun () ->
+    { t with verified_devices = devices }
+
+  let receive_mac_event t sender (event : ToDevice.KeyVerification.Mac.t) =
+    begin
+      if verified t then Result.return t else
+        event_ok t sender event.transaction_id >>= fun () ->
+        Result.ok_if_true (t.state |> function KeyReceived -> true | _ -> false)
+          ~error:(`Reason `UnexpectedMessage) >>= fun () ->
+        Result.of_option t.chosen_mac_method
+          ~error:(`Protocol "No MAC method has been chosen yet.") >>= fun mac_method ->
+        let info =
+          sprintf "MATRIX_KEY_VERIFICATION_MAC%s%s%s%s%s"
+            t.other_olm_device.user_id t.other_olm_device.id
+            t.own_user                 t.own_device
+            t.transaction_id
+        in
+        let key_ids = Map.keys event.mac
+                      |> List.sort ~compare:String.compare
+                      |> String.concat ~sep:"," in
+        let calc =
+          match mac_method with
+          | Normal -> Olm.Sas.calculate_mac
+          | Old    -> Olm.Sas.calculate_mac_long_kdf
+        in
+        calc t.sas key_ids (info ^ "KEY_IDS") >>= fun mac ->
+        Result.ok_if_true (String.equal event.keys mac)
+          ~error:(`Reason `KeyMismatch) >>= fun () ->
+        verify_devices t (fun fp_key -> calc t.sas fp_key info) event.mac >>| fun t ->
+        { t with state = MacReceived }
     end |> apply_sas_error t
 end
