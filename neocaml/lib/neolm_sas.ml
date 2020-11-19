@@ -5,18 +5,18 @@ open Neolm_devices
 module KV = ToDevice.KeyVerification
 
 type reason =
-  [ `UserCancel
-  | `Timeout
-  | `UnknownTransaction
-  | `UnknownMethod
-  | `UnexpectedMessage
-  | `KeyMismatch
-  | `UserMismatch
-  | `InvalidMessage
-  | `CommitmentMismatch
-  | `SasMismatch
-  | `Unknown of string
-  ]
+  | UserCancel
+  | Timeout
+  | UnknownTransaction
+  | UnknownMethod
+  | UnexpectedMessage
+  | KeyMismatch
+  | UserMismatch
+  | InvalidMessage
+  | CommitmentMismatch
+  | SasMismatch
+  | Unknown of string
+
 
 type error =
   [ `Reason of reason
@@ -26,43 +26,43 @@ type error =
   ]
 
 let reason_of_code = function
-  | "m.user_cancel"         -> `UserCancel
-  | "m.timeout"             -> `Timeout
-  | "m.unknown_transaction" -> `UnknownTransaction
-  | "m.unknown_method"      -> `UnknownMethod
-  | "m.unexpected_message"  -> `UnexpectedMessage
-  | "m.key_mismatch"        -> `KeyMismatch
-  | "m.user_error"          -> `UserMismatch
-  | "m.invalid_message"     -> `InvalidMessage
-  | "m.commitment_mismatch" -> `CommitmentMismatch
-  | "m.sas_mismatch"        -> `SasMismatch
-  | s                       -> `Unknown s
+  | "m.user_cancel"         -> UserCancel
+  | "m.timeout"             -> Timeout
+  | "m.unknown_transaction" -> UnknownTransaction
+  | "m.unknown_method"      -> UnknownMethod
+  | "m.unexpected_message"  -> UnexpectedMessage
+  | "m.key_mismatch"        -> KeyMismatch
+  | "m.user_error"          -> UserMismatch
+  | "m.invalid_message"     -> InvalidMessage
+  | "m.commitment_mismatch" -> CommitmentMismatch
+  | "m.sas_mismatch"        -> SasMismatch
+  | s                       -> Unknown s
 
 let reason_to_code = function
-  |  `UserCancel         -> "m.user_cancel"
-  |  `Timeout            -> "m.timeout"
-  |  `UnknownTransaction -> "m.unknown_transaction"
-  |  `UnknownMethod      -> "m.unknown_method"
-  |  `UnexpectedMessage  -> "m.unexpected_message"
-  |  `KeyMismatch        -> "m.key_mismatch"
-  |  `UserMismatch       -> "m.user_error"
-  |  `InvalidMessage     -> "m.invalid_message"
-  |  `CommitmentMismatch -> "m.commitment_mismatch"
-  |  `SasMismatch        -> "m.sas_mismatch"
-  |  `Unknown s          -> s
+  |  UserCancel         -> "m.user_cancel"
+  |  Timeout            -> "m.timeout"
+  |  UnknownTransaction -> "m.unknown_transaction"
+  |  UnknownMethod      -> "m.unknown_method"
+  |  UnexpectedMessage  -> "m.unexpected_message"
+  |  KeyMismatch        -> "m.key_mismatch"
+  |  UserMismatch       -> "m.user_error"
+  |  InvalidMessage     -> "m.invalid_message"
+  |  CommitmentMismatch -> "m.commitment_mismatch"
+  |  SasMismatch        -> "m.sas_mismatch"
+  |  Unknown s          -> s
 
 let reason_to_string = function
-  |  `UserCancel         -> "Canceled by user"
-  |  `Timeout            -> "Timed out"
-  |  `UnknownTransaction -> "Unknown transaction"
-  |  `UnknownMethod      -> "Unknown method"
-  |  `UnexpectedMessage  -> "Unexpected message"
-  |  `KeyMismatch        -> "Key mismatch"
-  |  `UserMismatch       -> "User mismatch"
-  |  `InvalidMessage     -> "Invalid message"
-  |  `CommitmentMismatch -> "Mismatched commitment"
-  |  `SasMismatch        -> "Mismatched short authentication string"
-  |  `Unknown s          -> "Unknown reason: " ^ s
+  |  UserCancel         -> "Canceled by user"
+  |  Timeout            -> "Timed out"
+  |  UnknownTransaction -> "Unknown transaction"
+  |  UnknownMethod      -> "Unknown method"
+  |  UnexpectedMessage  -> "Unexpected message"
+  |  KeyMismatch        -> "Key mismatch"
+  |  UserMismatch       -> "User mismatch"
+  |  InvalidMessage     -> "Invalid message"
+  |  CommitmentMismatch -> "Mismatched commitment"
+  |  SasMismatch        -> "Mismatched short authentication string"
+  |  Unknown s          -> "Unknown reason: " ^ s
 
 type state =
   | Created
@@ -263,7 +263,7 @@ let time_out t =
     let n = Time.now () in
     if Time.Span.(Time.diff n t.creation_time >=. max_age
                   || Time.diff n t.last_event_time >=. max_event_timeout)
-    then true, { t with state = Canceled `Timeout }
+    then true, { t with state = Canceled Timeout }
     else false, t
 
 let set_their_pubkey t pubkey =
@@ -277,9 +277,9 @@ let accept_sas = function
 
 let reject_sas = function
   | { their_sas_key = None; _ } -> Result.fail (`Protocol "Other key not even set.")
-  | t -> Result.return { t with state = Canceled `SasMismatch }
+  | t -> Result.return { t with state = Canceled SasMismatch }
 
-let cancel t = { t with state = Canceled `UserCancel }
+let cancel t = { t with state = Canceled UserCancel }
 
 let grouper ?filler n str =
   let f i acc c =
@@ -400,7 +400,7 @@ let check_commitment t key =
                   |> Api.canonical_json
     in
     Neolm_utils.sha256 (key ^ content) >>= fun sha ->
-    Result.ok_if_true (String.equal c sha) ~error:(`Reason `CommitmentMismatch)
+    Result.ok_if_true (String.equal c sha) ~error:(`Reason CommitmentMismatch)
 
 let share_key_event t =
   Result.ok_if_true (not @@ canceled t)
@@ -458,15 +458,15 @@ let cancellation_message t = cancellation_event t >>| event_to_message t
 let event_ok t sender tx_id =
   Result.ok_if_true (canceled t) ~error:(`Protocol "Already canceled") >>= fun () ->
   Result.ok_if_true (String.equal t.transaction_id tx_id)
-    ~error:(`Reason `UnknownTransaction) >>= fun () ->
+    ~error:(`Reason UnknownTransaction) >>= fun () ->
   Result.ok_if_true (String.equal t.other_olm_device.user_id sender)
-    ~error:(`Reason `UserMismatch)
+    ~error:(`Reason UserMismatch)
 
 let receive_accept_event t sender (event : ToDevice.KeyVerification.Accept.t) =
   begin
     event_ok t sender event.transaction_id >>= fun () ->
-    Result.ok_if_true (created t) ~error:(`Reason `UnexpectedMessage) >>= fun () ->
-    Result.ok_if_true ~error:(`Reason `UnknownMethod) begin
+    Result.ok_if_true (created t) ~error:(`Reason UnexpectedMessage) >>= fun () ->
+    Result.ok_if_true ~error:(`Reason UnknownMethod) begin
       List.mem
         t.key_agreement_protocols
         event.key_agreement_protocol
@@ -489,7 +489,7 @@ let receive_accept_event t sender (event : ToDevice.KeyVerification.Accept.t) =
 
 let receive_key_event t sender (event : ToDevice.KeyVerification.Key.t) =
   begin
-    Result.ok_if_true ~error:(`Reason `UnexpectedMessage) begin
+    Result.ok_if_true ~error:(`Reason UnexpectedMessage) begin
       Option.is_none t.their_sas_key
       && (t.state |> function Accepted | Started -> true | _ -> false)
     end >>= fun () ->
@@ -507,29 +507,29 @@ let verify_devices t calc_mac mac_map =
   let id_split key_id =
     match String.split ~on:':' key_id with
     | [ key_type; device_id ] -> Result.return (key_type, device_id)
-    | _                       -> Result.fail (`Reason `InvalidMessage)
+    | _                       -> Result.fail (`Reason InvalidMessage)
   in
   let verify devs ~key:key_id ~data:key_mac =
     id_split key_id >>= fun (key_type, device_id) ->
     Result.ok_if_true (String.equal key_type "ed25519")
-      ~error:(`Reason `KeyMismatch) >>= fun () ->
+      ~error:(`Reason KeyMismatch) >>= fun () ->
     if String.equal device_id t.other_olm_device.id then
       calc_mac t.other_olm_device.keys.ed25519 >>= fun mac ->
-      Result.ok_if_true ~error:(`Reason `KeyMismatch)
+      Result.ok_if_true ~error:(`Reason KeyMismatch)
         (String.equal key_mac mac) >>| fun () ->
       device_id :: devs
     else Result.return devs
   in
-  Neolm_utils.map_fold_result ~init:[] ~f:verify mac_map >>= fun devices ->
-  Result.ok_if_true (List.length devices > 0) ~error:(`Reason `KeyMismatch) >>| fun () ->
-  { t with verified_devices = devices }
+  Neolm_utils.map_fold_result ~init:[] ~f:verify mac_map >>= function
+  | devices when List.length devices > 0 -> Result.return devices
+  | _                                    -> Result.fail (`Reason KeyMismatch)
 
 let receive_mac_event t sender (event : ToDevice.KeyVerification.Mac.t) =
   begin
     if verified t then Result.return t else
       event_ok t sender event.transaction_id >>= fun () ->
       Result.ok_if_true (t.state |> function KeyReceived -> true | _ -> false)
-        ~error:(`Reason `UnexpectedMessage) >>= fun () ->
+        ~error:(`Reason UnexpectedMessage) >>= fun () ->
       Result.of_option t.chosen_mac_method
         ~error:(`Protocol "No MAC method has been chosen yet.") >>= fun mac_method ->
       let info =
@@ -548,7 +548,7 @@ let receive_mac_event t sender (event : ToDevice.KeyVerification.Mac.t) =
       in
       calc t.sas key_ids (info ^ "KEY_IDS") >>= fun mac ->
       Result.ok_if_true (String.equal event.keys mac)
-        ~error:(`Reason `KeyMismatch) >>= fun () ->
-      verify_devices t (fun fp_key -> calc t.sas fp_key info) event.mac >>| fun t ->
-      { t with state = MacReceived }
+        ~error:(`Reason KeyMismatch) >>= fun () ->
+      verify_devices t (fun fp_key -> calc t.sas fp_key info) event.mac >>| fun devs ->
+      { t with verified_devices = devs; state = MacReceived }
   end |> apply_sas_error t
