@@ -157,3 +157,11 @@ module InboundGroupSession = struct
 
   let is_verified t = Olm.InboundGroupSession.is_verified t.igs
 end
+
+module SessionStore = struct
+  type t
+end
+
+module InboundGroupStore = struct
+  type t
+end

@@ -44,7 +44,7 @@ module Device = struct
   let active t = not t.deleted
 end
 
-module DeviceMap = struct
+module DeviceStore = struct
   type t = Device.t StringMap.t StringMap.t
 
   let active_user_devices t user_id =
