@@ -59,6 +59,24 @@ module RoomKeyRequest = struct
   type t = { content : content
            ; m_type  : string [@key "type"]
            } [@@deriving yojson]
+
+  let create_request key_info request_id requesting_device_id =
+    { content = { body   = Some key_info
+                ; action = Request
+                ; requesting_device_id
+                ; request_id
+                }
+    ; m_type  = "m.room_key_request"
+    }
+
+  let create_cancellation request_id requesting_device_id =
+    { content = { body   = None
+                ; action = RequestCancellation
+                ; requesting_device_id
+                ; request_id
+                }
+    ; m_type  = "m.room_key_request"
+    }
 end
 
 module ForwardedRoomKey = struct
