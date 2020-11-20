@@ -52,6 +52,8 @@ let alist_of_yojson of_yojson j =
 module StringMap = struct
   type 'a t = (string, 'a, String.comparator_witness) Map.t
 
+  let empty = Map.empty (module String)
+
   let of_yojson a_of_yojson j =
     let open Result in
     alist_of_yojson a_of_yojson j >>= fun l ->
