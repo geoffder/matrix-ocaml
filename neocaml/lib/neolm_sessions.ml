@@ -201,31 +201,29 @@ module InboundGroupStore = struct
   type t = InboundGroupSession.t StringMap.t StringMap.t StringMap.t
 
   let create (igs : InboundGroupSession.t) =
-    Map.add_exn (Map.empty (module String)) ~key:igs.room_id
-      ~data:(Map.add_exn (Map.empty (module String)) ~key:igs.sender_key
-               ~data:(Map.add_exn (Map.empty (module String)) ~key:igs.id
+    Map.add_exn StringMap.empty ~key:igs.room_id
+      ~data:(Map.add_exn StringMap.empty ~key:igs.sender_key
+               ~data:(Map.add_exn StringMap.empty ~key:igs.id
                         ~data:igs))
 
   let add t (igs : InboundGroupSession.t) =
     let senders_opt = Map.find t igs.room_id in
     Option.bind ~f:(fun m -> Map.find m igs.sender_key) senders_opt
-    |> Option.value ~default:(Map.empty (module String))
+    |> Option.value ~default:StringMap.empty
     |> Map.add ~key:igs.id ~data:igs
     |> function
     | `Duplicate   -> Result.fail `Duplicate
     | `Ok sessions ->
-      let senders = Option.value_map ~default:(Map.empty (module String))
+      let senders = Option.value_map ~default:StringMap.empty
           ~f:(fun m -> Map.set m ~key:igs.sender_key ~data:sessions)
           senders_opt
       in
       Result.return @@ Map.set t ~key:igs.room_id ~data:senders
 
   let sessions t =
-    Map.data t
-    |> List.map ~f:Map.data
-    |> List.join
-    |> List.map ~f:Map.data
-    |> List.join
+    let collect_data ~f acc m = Map.data m |> List.fold ~init:acc ~f in
+    List.fold (Map.data t) ~init:[]
+      ~f:(collect_data ~f:(collect_data ~f:(fun acc s -> s :: acc )))
 
   let get t room_id sender_key session_id =
     let open Option.Monad_infix in
