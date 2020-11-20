@@ -167,15 +167,69 @@ module InboundGroupSession = struct
 
   let import_session ?(forwarding_chain=[]) exported_key signing_key sender_key room_id =
     Olm.InboundGroupSession.import_session exported_key >>| fun igs ->
-    { igs; ed25519 = signing_key; sender_key; room_id; forwarding_chain }
+    Olm.InboundGroupSession.id igs >>| fun id ->
+    { igs; id; ed25519 = signing_key; sender_key; room_id; forwarding_chain }
 
   let is_verified t = Olm.InboundGroupSession.is_verified t.igs
 end
 
 module SessionStore = struct
-  type t
+  type t = Session.t list Yojson_helpers.StringMap.t
+
+  let use_time_sort (l : Session.t list) =
+    List.sort ~compare:(fun a b -> (-1) * Time.compare a.use_time b.use_time) l
+
+  let add t sender_key session =
+    begin
+      match Map.find t sender_key with
+      | None   -> Result.return []
+      | Some l ->
+        if List.mem l ~equal:Session.equal session
+        then Result.fail `SessionAlreadyStored
+        else Result.return (use_time_sort l)
+    end >>| fun session_list ->
+    Map.set t ~key:sender_key ~data:(session :: session_list)
+
+  let sessions t = List.join (Map.data t)
+
+  let get t sender_key = Map.find t sender_key |> Option.map ~f:List.hd
 end
 
 module InboundGroupStore = struct
-  type t
+  module StringMap = Yojson_helpers.StringMap
+
+  type t = InboundGroupSession.t StringMap.t StringMap.t StringMap.t
+
+  let create (igs : InboundGroupSession.t) =
+    Map.add_exn (Map.empty (module String)) ~key:igs.room_id
+      ~data:(Map.add_exn (Map.empty (module String)) ~key:igs.sender_key
+               ~data:(Map.add_exn (Map.empty (module String)) ~key:igs.id
+                        ~data:igs))
+
+  let add t (igs : InboundGroupSession.t) =
+    let senders_opt = Map.find t igs.room_id in
+    Option.bind ~f:(fun m -> Map.find m igs.sender_key) senders_opt
+    |> Option.value ~default:(Map.empty (module String))
+    |> Map.add ~key:igs.id ~data:igs
+    |> function
+    | `Duplicate   -> Result.fail `Duplicate
+    | `Ok sessions ->
+      let senders = Option.value_map ~default:(Map.empty (module String))
+          ~f:(fun m -> Map.set m ~key:igs.sender_key ~data:sessions)
+          senders_opt
+      in
+      Result.return @@ Map.set t ~key:igs.room_id ~data:senders
+
+  let sessions t =
+    Map.data t
+    |> List.map ~f:Map.data
+    |> List.join
+    |> List.map ~f:Map.data
+    |> List.join
+
+  let get t room_id sender_key session_id =
+    let open Option.Monad_infix in
+    Map.find t room_id          >>= fun senders ->
+    Map.find senders sender_key >>= fun sessions ->
+    Map.find sessions session_id
 end
