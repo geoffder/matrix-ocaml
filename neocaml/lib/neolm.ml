@@ -1,11 +1,11 @@
-open! Core
-open! Yojson_helpers
+open Core
+open Yojson_helpers
 open! Result.Monad_infix
 
-open! Neolm_devices
-open! Neolm_sessions
+open Neolm_devices
+open Neolm_sessions
+open Neolm_key_requests
 module Sas = Neolm_sas
-module OutgoingKeyRequest = Neolm_outgoing_key_request
 
 let olm_algorithm                      = "m.olm.v1.curve25519-aes-sha2"
 let megolm_algorithm                   = "m.megolm.v1.aes-sha2"
@@ -28,5 +28,5 @@ type t = { user_id                 : string
          ; outbound_group_sessions : OutboundGroupSession.t StringMap.t
          ; tracked_users           : (string, String.comparator_witness) Set.t
          ; outgoing_key_requests   : OutgoingKeyRequest.t StringMap.t
-         ; received_key_requests   : ToDevice.RoomKeyRequest.t
+         ; received_key_requests   : IncomingKeyRequest.t StringMap.t
          }
