@@ -33,23 +33,28 @@ module Session = struct
   (* NOTE: Not decided on whether I want to do mutable just to avoid having to
    * return a new t to update use_time... *)
   type t = { ses              : Olm.Session.t
+           ; id               : string
            ; creation_time    : Time.t
            ; mutable use_time : Time.t
            }
 
   let create_inbound ?identity_key (acc : Account.t) msg =
-    Olm.Session.create_inbound ?identity_key acc.acc msg >>| fun ses ->
-    { ses; creation_time = Time.now (); use_time = Time.now () }
+    Olm.Session.create_inbound ?identity_key acc.acc msg >>= fun ses ->
+    Olm.Session.id ses >>| fun id ->
+    { ses; id; creation_time = Time.now (); use_time = Time.now () }
 
   let create_outbound (acc : Account.t) identity_key one_time_key =
     Olm.Session.create_outbound acc.acc identity_key one_time_key >>| fun ses ->
-    { ses; creation_time = Time.now (); use_time = Time.now () }
+    Olm.Session.id ses >>| fun id ->
+    { ses; id; creation_time = Time.now (); use_time = Time.now () }
 
   let pickle ?pass t = Olm.Session.pickle ?pass t.ses
 
   let from_pickle ?pass ?use_time creation_time pickle =
     Olm.Session.from_pickle ?pass pickle >>| fun ses ->
-    { ses; creation_time; use_time = Option.value ~default:creation_time use_time }
+    Olm.Session.id ses >>| fun id ->
+    let use_time = Option.value ~default:creation_time use_time in
+    { ses; id; creation_time; use_time }
 
   let decrypt ?ignore_unicode_errors t msg =
     t.use_time <- Time.now ();
@@ -65,12 +70,15 @@ module Session = struct
 
   let remove_one_time_keys t (acc : Account.t) =
     Olm.Session.remove_one_time_keys t.ses acc.acc
+
+  let equal a b = phys_equal a.ses.ses b.ses.ses
 end
 
 module OutboundGroupSession = struct
   (* NOTE: Not decided on whether I want to do mutable just to avoid having to
    * return a new t to update message_count (etc?)... *)
   type t = { ogs                   : Olm.OutboundGroupSession.t
+           ; id                    : string
            ; creation_time         : Time.t
            ; mutable message_count : int
            ; users_shared_with     : (string, String.comparator_witness) Set.t
@@ -82,8 +90,10 @@ module OutboundGroupSession = struct
   let max_messages = 100
 
   let create () =
-    Olm.OutboundGroupSession.create () >>| fun ogs ->
+    Olm.OutboundGroupSession.create () >>= fun ogs ->
+    Olm.OutboundGroupSession.id ogs    >>| fun id ->
     { ogs
+    ; id
     ; creation_time     = Time.now ()
     ; message_count     = 0
     ; users_shared_with = Set.empty (module String)
@@ -104,7 +114,8 @@ module OutboundGroupSession = struct
       shared
     =
     Olm.OutboundGroupSession.from_pickle ?pass pickle >>| fun ogs ->
-    { ogs; creation_time; message_count; users_shared_with; users_ignored; shared }
+    Olm.OutboundGroupSession.id ogs >>| fun id ->
+    { ogs; id; creation_time; message_count; users_shared_with; users_ignored; shared }
 
   let encrypt t plaintext =
     t.message_count <- t.message_count + 1;
@@ -125,6 +136,7 @@ end
 
 module InboundGroupSession = struct
   type t = { igs              : Olm.InboundGroupSession.t
+           ; id               : string
            ; ed25519          : string
            ; sender_key       : string
            ; room_id          : string
@@ -133,13 +145,15 @@ module InboundGroupSession = struct
 
   let create ?(forwarding_chain=[]) outbound_session_key signing_key sender_key room_id =
     Olm.InboundGroupSession.create outbound_session_key >>| fun igs ->
-    { igs; ed25519 = signing_key; sender_key; room_id; forwarding_chain }
+    Olm.InboundGroupSession.id igs >>| fun id ->
+    { igs; id; ed25519 = signing_key; sender_key; room_id; forwarding_chain }
 
   let pickle ?pass t = Olm.InboundGroupSession.pickle ?pass t.igs
 
   let from_pickle ?(forwarding_chain=[]) ?pass pickle signing_key sender_key room_id =
     Olm.InboundGroupSession.from_pickle ?pass pickle >>| fun igs ->
-    { igs; ed25519 = signing_key; sender_key; room_id; forwarding_chain }
+    Olm.InboundGroupSession.id igs >>| fun id ->
+    { igs; id; ed25519 = signing_key; sender_key; room_id; forwarding_chain }
 
   let decrypt ?ignore_unicode_errors t ciphertext =
     Olm.InboundGroupSession.decrypt ?ignore_unicode_errors t.igs ciphertext
