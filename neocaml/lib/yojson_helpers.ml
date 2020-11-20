@@ -1,4 +1,4 @@
-open Base
+open Core
 open Neo_infix
 
 module U = Yojson.Safe.Util
@@ -50,19 +50,17 @@ let alist_of_yojson of_yojson j =
   assoc_of_yojson j >>= (List.map ~f:pair_of_yojson >> Result.all)
 
 module StringMap = struct
-  type 'a t = (string, 'a, String.comparator_witness) Map.t
-
-  let empty = Map.empty (module String)
+  include (Map.Make (String))
 
   let of_yojson a_of_yojson j =
     let open Result in
     alist_of_yojson a_of_yojson j >>= fun l ->
-    try Map.of_alist_exn (module String) l |> Result.return
+    try of_alist_exn l |> Result.return
     with _ -> Result.fail "Invalid 'a string_map."
 
-  let to_yojson a_to_yojson a =
+  let to_yojson a_to_yojson t =
     let yo_pair (k, v) = k, a_to_yojson v in
-    Map.to_alist a |> List.map ~f:yo_pair |> yo_assoc
+    to_alist t |> List.map ~f:yo_pair |> yo_assoc
 end
 
 module type DerivingYojson = sig

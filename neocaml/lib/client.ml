@@ -1,6 +1,7 @@
 open Core
 open Lwt.Infix
 open Neo_infix
+open Yojson_helpers
 
 (* NOTE: Should probably not have random state in the client, but this will
  * do for now until I think about it. *)
@@ -10,7 +11,7 @@ type t = { homeserver      : string
          ; device_id       : string option
          ; store_path      : string option
          ; access_token    : string option
-         ; rooms           : (string, Room.t, String.comparator_witness) Map.t
+         ; rooms           : Room.t StringMap.t
          ; encrypted_rooms : (string, String.comparator_witness) Set.t
          }
 
@@ -21,7 +22,7 @@ let create ?device_id ?store_path ?access_token homeserver user =
   ; device_id
   ; store_path
   ; access_token
-  ; rooms           = Map.empty (module String)
+  ; rooms           = StringMap.empty
   ; encrypted_rooms = Set.empty (module String)
   }
 

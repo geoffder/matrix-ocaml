@@ -1,5 +1,6 @@
 open! Core
 open Result.Monad_infix
+open Yojson_helpers
 
 module Account = struct
   type t = { acc    : Olm.Account.t
@@ -174,21 +175,24 @@ module InboundGroupSession = struct
 end
 
 module SessionStore = struct
-  type t = Session.t list Yojson_helpers.StringMap.t
+  type t = Session.t list StringMap.t
+
+  let create sender session =
+    StringMap.add_exn StringMap.empty ~key:sender ~data:session
 
   let use_time_sort (l : Session.t list) =
     List.sort ~compare:(fun a b -> (-1) * Time.compare a.use_time b.use_time) l
 
-  let add t sender_key session =
+  let add t sender session =
     begin
-      match Map.find t sender_key with
+      match Map.find t sender with
       | None   -> Result.return []
       | Some l ->
         if List.mem l ~equal:Session.equal session
         then Result.fail `SessionAlreadyStored
         else Result.return (use_time_sort l)
     end >>| fun session_list ->
-    Map.set t ~key:sender_key ~data:(session :: session_list)
+    Map.set t ~key:sender ~data:(session :: session_list)
 
   let sessions t = List.join (Map.data t)
 
@@ -196,8 +200,6 @@ module SessionStore = struct
 end
 
 module InboundGroupStore = struct
-  module StringMap = Yojson_helpers.StringMap
-
   type t = InboundGroupSession.t StringMap.t StringMap.t StringMap.t
 
   let create (igs : InboundGroupSession.t) =

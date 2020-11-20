@@ -1,6 +1,7 @@
 open! Core
 open Result.Monad_infix
 open Neolm_devices
+open Yojson_helpers
 
 module KV = ToDevice.KeyVerification
 
@@ -435,7 +436,7 @@ let mac_event t =
   ToDevice.KeyVerification
     (Mac
        { transaction_id = t.transaction_id
-       ; mac            = Map.of_alist_exn (module String) [ ("key_id", mac) ]
+       ; mac            = StringMap.of_alist_exn [ ("key_id", mac) ]
        ; keys
        })
   |> Result.return
@@ -538,7 +539,7 @@ let receive_mac_event t sender (event : ToDevice.KeyVerification.Mac.t) =
           t.own_user                 t.own_device
           t.transaction_id
       in
-      let key_ids = Map.keys event.mac
+      let key_ids = StringMap.keys event.mac
                     |> List.sort ~compare:String.compare
                     |> String.concat ~sep:"," in
       let calc =
