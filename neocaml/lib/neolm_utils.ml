@@ -29,6 +29,18 @@ let int_of_bin_exn s =
   |> String.foldi ~init:0
     ~f:(fun i sum c -> sum + (char_to_bit c * (Int.pow 2 i)))
 
+let int_to_bigend_cstruct ~len i =
+  let cs = Cstruct.create len in
+  let rec loop n rem =
+    if n >= 0 then
+      let b = Int.pow 256 n in
+      Cstruct.set_uint8 cs (len - n - 1) (rem / b);
+      loop (n - 1) (rem mod b)
+    else ()
+  in
+  loop (len - 1) i;
+  cs
+
 let map_fold_result ~init ~f m =
   with_return begin fun { return } ->
     Result.return @@
