@@ -6,6 +6,10 @@
             str
             lwt
             cohttp-lwt-unix
+            pbkdf
+            nocrypto
+            nocrypto.unix
+            base64
             yojson
             ppx_deriving_yojson.runtime)
  (preprocess (pps ppx_deriving_yojson)))
