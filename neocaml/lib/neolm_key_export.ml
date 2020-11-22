@@ -1,22 +1,19 @@
-open! Core
+open Core
 open Result.Monad_infix
 
-let header   = "-----BEGIN MEGOLM SESSION DATA-----"
-let footer   = "-----END MEGOLM SESSION DATA-----"
+let header   = "-----BEGIN MEGOLM SESSION DATA-----\n"
+let footer   = "\n-----END MEGOLM SESSION DATA-----"
 let dk_len   = Int32.of_int_exn 64
 let hmac_len = 32
 
 let sha512_pbkdf2 ~password ~salt ~count =
   Pbkdf.pbkdf2 ~prf:`SHA512 ~password ~salt ~count ~dk_len
+  |> Fn.flip Cstruct.split @@ 32
 
-(* TODO: Result instead of exception? (there are uncaught expeptions right
- *  now.) *)
 let encrypt ?(count=100000) pass data =
   let password          = Cstruct.of_string pass in
   let salt              = Nocrypto.Rng.generate 16 in
-  let aes_key, hmac_key = sha512_pbkdf2 ~password ~salt ~count
-                          |> Fn.flip Cstruct.split @@ 32
-  in
+  let aes_key, hmac_key = sha512_pbkdf2 ~password ~salt ~count in
   let ctr = Nocrypto.Rng.generate 16 in
   (* Set bit 63 to 0. *)
   Cstruct.set_uint8 ctr 8 ((Cstruct.get_uint8 ctr 8) land (lnot (1 lsl 7)));
@@ -31,10 +28,9 @@ let encrypt ?(count=100000) pass data =
   let hmac = Nocrypto.Hash.SHA256.hmac ~key:hmac_key payload in
   Cstruct.concat [ payload; hmac ]
   |> Cstruct.to_string
-  |> Base64.encode_exn ~pad:false
+  |> Base64.encode ~pad:false
+  |> Result.map_error ~f:(fun _ -> `InvalidBase64)
 
-(* TODO: Result instead of exception? (there are uncaught expeptions right
- *  now.) *)
 let decrypt pass payload =
   Base64.decode ~pad:false payload |> Result.map_error ~f:(fun _ -> `InvalidBase64) >>|
   Cstruct.of_string >>= fun decoded ->
@@ -47,12 +43,10 @@ let decrypt pass payload =
                  |> Cstruct.to_bytes
                  |> Neolm_utils.bigend_bytes_to_int
   in
-  let hmac_offset       = (Cstruct.len decoded) - hmac_len in
+  let hmac_offset       = Cstruct.len decoded - hmac_len in
   let encrypted         = Cstruct.sub decoded 37 (hmac_offset - 37) in
   let expected_hmac     = Cstruct.sub decoded hmac_offset hmac_len in
-  let aes_key, hmac_key = sha512_pbkdf2 ~password ~salt ~count
-                          |> Fn.flip Cstruct.split @@ 32
-  in
+  let aes_key, hmac_key = sha512_pbkdf2 ~password ~salt ~count in
   let hmac = Cstruct.sub decoded 0 (Cstruct.len decoded - hmac_len)
              |> Nocrypto.Hash.SHA256.hmac ~key:hmac_key
   in
@@ -62,6 +56,17 @@ let decrypt pass payload =
   CTR.decrypt encrypted ~key:(CTR.of_secret aes_key) ~ctr
   |> Cstruct.to_string
 
-let encrypt_and_save = ()
+let encrypt_and_save ?count outfile pass data =
+  encrypt ?count pass data >>| fun encrypted ->
+  let oc = Out_channel.create outfile in
+  fprintf oc "%s%s%s" header encrypted footer;
+  Out_channel.close oc
 
-let decrypt_and_read = ()
+let decrypt_and_read infile pass =
+  let ic = In_channel.create infile in
+  let contents = In_channel.input_all ic in
+  In_channel.close ic;
+  String.chop_prefix ~prefix:header contents
+  |> Option.bind ~f:(String.chop_suffix ~suffix:footer)
+  |> Result.of_option ~error:(`Protocol "Wrong file format.")
+  >>= decrypt pass
