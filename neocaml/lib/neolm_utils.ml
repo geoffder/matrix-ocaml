@@ -41,6 +41,12 @@ let int_to_bigend_cstruct ~len i =
   loop (len - 1) i;
   cs
 
+let bigend_bytes_to_int bytes =
+  Bytes.to_list bytes
+  |> List.rev
+  |> List.foldi ~init:0
+    ~f:(fun i acc c -> acc + (Char.to_int c) * (Int.pow 256 i))
+
 let map_fold_result ~init ~f m =
   with_return begin fun { return } ->
     Result.return @@
