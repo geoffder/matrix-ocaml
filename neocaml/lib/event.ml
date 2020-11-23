@@ -1,7 +1,16 @@
 open Core
 open Yojson_helpers
 
-module Room = Event_room.Room
+(** NOTE: Unimplemented events
+ ** - m.room.server_acl
+ **
+ ** Moderation policy lists (state events):
+ ** - m.policy.rule.user
+ ** - m.policy.rule.room
+ ** - m.policy.rule.server *)
+
+module Room      = Event_room.Room
+module RoomState = Event_room.RoomState
 
 module Call = struct
   module Invite = struct
@@ -263,6 +272,7 @@ end
 
 type t =
   | Room of Room.t
+  | RoomState of RoomState.t
   | Call of Call.t
   | Presence of Presence.t
   | Typing of Typing.t
@@ -276,6 +286,7 @@ type t =
   | Unknown of Yojson.Safe.t
 
 let room e              = Room e
+let room_state e        = RoomState e
 let call e              = Call e
 let presence e          = Presence e
 let typing e            = Typing e
@@ -294,11 +305,17 @@ let is_room_type m =
   || String.equal m "im.vector.modular.widgets"
   || String.equal m "org.matrix.room.preview_urls"
 
+let is_state j =
+  match U.member "state_key" j with
+  | `Null -> false
+  | _     -> true
+
 let is_call_type m = String.is_prefix m ~prefix:"m.call."
 
 let of_yojson j =
   let open Result in
   match U.member "type" j |> U.to_string_option with
+  | Some _ when is_state j     -> RoomState.of_yojson j       >>| room_state
   | Some m when is_room_type m -> Room.of_yojson j            >>| room
   | Some m when is_call_type m -> Call.of_yojson j            >>| call
   | Some "m.presence"          -> Presence.of_yojson j        >>| presence
