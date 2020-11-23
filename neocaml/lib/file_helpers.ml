@@ -29,9 +29,11 @@ module Ext = struct
     | Some e when is_audio e -> "audio/" ^ fix e
     | _                      -> "appication/octet-stream"
 
-  let to_msg_create = function
-    | Some e when is_image e -> Event.Room.Message.Image.no_info_msg
-    | Some e when is_video e -> Event.Room.Message.Video.no_info_msg
-    | Some e when is_audio e -> Event.Room.Message.Audio.no_info_msg
-    | _                      -> Event.Room.Message.File.no_info_msg
+  let to_msg_create ext =
+    let open Event.Room.Message in
+    match ext with
+    | Some e when is_image e -> (fun ?url ?file body -> Image (Image.create ?url ?file body))
+    | Some e when is_video e -> (fun ?url ?file body -> Video (Video.create ?url ?file body))
+    | Some e when is_audio e -> (fun ?url ?file body -> Audio (Audio.create ?url ?file body))
+    | _                      -> (fun ?url ?file body -> File  (File.create  ?url ?file body))
 end
