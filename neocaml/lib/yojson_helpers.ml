@@ -17,25 +17,32 @@ let yojson_of_string s =
 let json_of_option con opt : Yojson.Safe.t =
   Option.value_map ~f:con ~default:`Null opt
 
+let err_msg expected j =
+  sprintf "Input yojson { %s } is not a { %s }" (Yojson.Safe.show j) expected
+
 let assoc_of_yojson j =
   try U.to_assoc j |> Result.return
   with _ -> Result.fail "Input yojson is not an `Assoc."
 
 let string_of_yojson j =
   try U.to_string j |> Result.return
-  with _ -> Result.fail "Input yojson is not a `String."
+  with _ -> Result.fail (err_msg "`String" j)
 
 let float_of_yojson j =
   try U.to_float j |> Result.return
-  with _ -> Result.fail "Input yojson is not a `Float."
+  with _ -> Result.fail (err_msg "`Float" j)
 
 let int_of_yojson j =
   try U.to_int j |> Result.return
-  with _ -> Result.fail "Input yojson is not an `Int."
+  with _ -> Result.fail (err_msg "`Int" j)
 
 let bool_of_yojson j =
   try U.to_bool j |> Result.return
-  with _ -> Result.fail "Input yojson is not a `Bool."
+  with _ -> Result.fail (err_msg "`Bool" j)
+
+let opt_of_yojson of_yojson = function
+  | `Null -> Result.return None
+  | j     -> of_yojson j |> Result.map ~f:Option.some
 
 let list_of_yojson j =
   try U.to_list j |> Result.return
