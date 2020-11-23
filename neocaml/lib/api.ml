@@ -188,10 +188,10 @@ let room_invite access room_id user_id =
 let room_create ?invite ?initial_state ?power_override access config =
   let queries = query "access_token" access in
   let power = Option.value_map ~default:`Null
-      ~f:Event.Room.PowerLevels.to_yojson
+      ~f:Event.RoomState.PowerLevels.to_yojson
       power_override
   in
-  let init = Option.map ~f:(List.map ~f:Event.Room.to_yojson) initial_state in
+  let init = Option.map ~f:(List.map ~f:Event.RoomState.to_yojson) initial_state in
   let content =
     [ ("invite", json_of_option (yo_list yo_string) invite)
     ; ("initial_state", json_of_option (yo_list Fn.id) init)
