@@ -29,7 +29,7 @@ module ToDeviceList = struct
 end
 
 module StateList = struct
-  type t = { events : Event.Room.t list } [@@deriving of_yojson]
+  type t = { events : Event.RoomState.t list } [@@deriving of_yojson]
 end
 
 module JoinedRooms = struct
@@ -42,7 +42,7 @@ module RoomMessages = struct
   type t  = { start_token : string [@key "start"]
             ; end_token   : string [@key "end"]
             ; chunk       : Event.t list
-            ; state       : Event.Room.t list option [@default None]
+            ; state       : Event.RoomState.t list option [@default None]
             } [@@deriving of_yojson]
 end
 
@@ -103,7 +103,7 @@ module JoinedMembers = struct
 end
 
 module RoomGetState = struct
-  type t = Event.Room.t list [@@deriving of_yojson]
+  type t = Event.RoomState.t list [@@deriving of_yojson]
 end
 
 module RoomResolveAlias = struct
@@ -162,7 +162,7 @@ module RoomContext = struct
            ; events_before : Event.Room.t list
            ; event         : Event.Room.t
            ; events_after  : Event.Room.t list
-           ; state         : Event.Room.t list
+           ; state         : Event.RoomState.t list
            } [@@deriving of_yojson]
 end
 
@@ -221,7 +221,7 @@ module ToDevice = Empty (struct let fail = "Failed to send to-device message." e
 module Sync = struct
   module Timeline = struct
     (* NOTE: Try using Event.Room.t but might need to be Event.t *)
-    type t = { events     : Event.Room.t list option [@default None]
+    type t = { events     : Event.t list option [@default None]
              ; limited    : bool option               [@default None]
              ; prev_batch : string
              } [@@deriving of_yojson]
