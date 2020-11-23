@@ -14,7 +14,7 @@ let encrypt ?(count=100000) pass data =
   let password          = Cstruct.of_string pass in
   let salt              = Nocrypto.Rng.generate 16 in
   let aes_key, hmac_key = sha512_pbkdf2 ~password ~salt ~count in
-  let ctr = Nocrypto.Rng.generate 16 in
+  let ctr               = Nocrypto.Rng.generate 16 in
   (* Set bit 63 to 0. *)
   Cstruct.set_uint8 ctr 8 ((Cstruct.get_uint8 ctr 8) land (lnot (1 lsl 7)));
   let count_cs  = Neolm_utils.int_to_bigend_cstruct ~len:4 count in

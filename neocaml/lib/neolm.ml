@@ -11,7 +11,7 @@ let olm_algorithm                      = "m.olm.v1.curve25519-aes-sha2"
 let megolm_algorithm                   = "m.megolm.v1.aes-sha2"
 let algorithms                         = [ olm_algorithm; megolm_algorithm ]
 let max_sas_life                       = Time.Span.of_min 20.0
-let unwedging_interval                 = Time.Span.of_min 60.
+let unwedging_interval                 = Time.Span.of_min 60.0
 let max_to_device_messages_per_request = 20
 let message_index_store_size           = 100000
 
