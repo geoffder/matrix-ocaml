@@ -9,8 +9,20 @@ module Empty (M : sig val fail : string end) = struct
     | _         -> Result.fail M.fail
 end
 
-module EventList = struct
-  type t = { events : Event.t list } [@@deriving of_yojson]
+module StateList = struct
+  type t = { events : Event.RoomState.t list } [@@deriving of_yojson]
+end
+
+module EphemeralList = struct
+  type t = { events : Event.Ephemeral.t list } [@@deriving of_yojson]
+end
+
+module PresenceList = struct
+  type t = { events : Event.Presence.t list } [@@deriving of_yojson]
+end
+
+module AccountDataList = struct
+  type t = { events : Event.AccountData.t list } [@@deriving of_yojson]
 end
 
 module ToDeviceList = struct
@@ -28,20 +40,14 @@ module ToDeviceList = struct
     |> fun events -> { events }
 end
 
-module StateList = struct
-  type t = { events : Event.RoomState.t list } [@@deriving of_yojson]
-end
-
 module JoinedRooms = struct
   type t = { joined_rooms : string list } [@@deriving of_yojson]
 end
 
 module RoomMessages = struct
-  (* NOTE: Call events appear in chunk, should merge the Event.Call module into
-   * Event.Room? Otherwise would have to use Event.t here. *)
   type t  = { start_token : string [@key "start"]
             ; end_token   : string [@key "end"]
-            ; chunk       : Event.t list
+            ; chunk       : Event.Room.t list
             ; state       : Event.RoomState.t list option [@default None]
             } [@@deriving of_yojson]
 end
@@ -220,9 +226,8 @@ module ToDevice = Empty (struct let fail = "Failed to send to-device message." e
 
 module Sync = struct
   module Timeline = struct
-    (* NOTE: Try using Event.Room.t but might need to be Event.t *)
-    type t = { events     : Event.t list option [@default None]
-             ; limited    : bool option               [@default None]
+    type t = { events     : Event.Timeline.t list option [@default None]
+             ; limited    : bool option                  [@default None]
              ; prev_batch : string
              } [@@deriving of_yojson]
   end
@@ -246,8 +251,8 @@ module Sync = struct
       { summary              : RoomSummary.t option              [@default None]
       ; state                : StateList.t option                [@default None]
       ; timeline             : Timeline.t option                 [@default None]
-      ; ephemeral            : EventList.t option                [@default None]
-      ; account_data         : EventList.t option                [@default None]
+      ; ephemeral            : EphemeralList.t option            [@default None]
+      ; account_data         : AccountDataList.t option          [@default None]
       ; unread_notifications : UnreadNotificationCounts.t option [@default None]
       ; msc2654_unread_count : int option [@key "org.matrix.msc2654.unread_count"] [@default None]
       } [@@deriving of_yojson { strict = false }]
@@ -258,7 +263,7 @@ module Sync = struct
   end
 
   module InvitedRooms = struct
-    type info = { invite_state : EventList.t option [@default None] }
+    type info = { invite_state : StateList.t option [@default None] }
     [@@deriving of_yojson]
 
     type t = info StringMap.t
@@ -267,9 +272,9 @@ module Sync = struct
   end
 
   module LeftRooms = struct
-    type info = { state        : EventList.t option [@default None]
-                ; timeline     : Timeline.t option  [@default None]
-                ; account_data : EventList.t option [@default None]
+    type info = { state        : StateList.t option       [@default None]
+                ; timeline     : Timeline.t option        [@default None]
+                ; account_data : AccountDataList.t option [@default None]
                 } [@@deriving of_yojson]
 
     type t = info StringMap.t
@@ -302,8 +307,8 @@ module Sync = struct
   type t =
     { next_batch                 : string
     ; rooms                      : Rooms.t option            [@default None]
-    ; presence                   : EventList.t option        [@default None]
-    ; account_data               : EventList.t option        [@default None]
+    ; presence                   : PresenceList.t option     [@default None]
+    ; account_data               : AccountDataList.t option  [@default None]
     ; to_device                  : ToDeviceList.t option     [@default None]
     ; device_lists               : DeviceLists.t option      [@default None]
     ; device_one_time_keys_count : OneTimeKeysCount.t option [@default None]

@@ -939,23 +939,135 @@ module Room = struct
              } [@@deriving yojson]
   end
 
+  module Call = struct
+    module Invite = struct
+      type session_type = Offer
+
+      let session_type_of_yojson = function
+        | `String "offer" -> Result.return Offer
+        | `String s       -> Result.fail ("Type of session was not offer: " ^ s)
+        | _               -> Result.fail "Type of session missing / not a string."
+
+      let session_type_to_yojson = function
+        | Offer -> `String "offer"
+
+      type offer = { session_type : session_type [@key "type"]
+                   ; sdp          : string
+                   } [@@deriving yojson]
+
+      type t = { call_id : string
+               ; offer : offer
+               ; version : int
+               ; lifetime : int
+               } [@@deriving yojson]
+    end
+
+    module Candidates = struct
+      type candidate = { sdpMid        : string
+                       ; sdpMLineIndex : int
+                       ; candidate     : string
+                       } [@@deriving yojson]
+
+      type t = { call_id    : string
+               ; candidates : candidate list
+               ; version    : int
+               } [@@deriving yojson]
+    end
+
+    module Answer = struct
+      type session_type = Answer
+
+      let session_type_of_yojson = function
+        | `String "answer" -> Result.return Answer
+        | `String s        -> Result.fail ("Type of session was not answer: " ^ s)
+        | _                -> Result.fail "Type of session missing / not string."
+
+      let session_type_to_yojson = function
+        | Answer -> `String "answer"
+
+      type answer = { session_type : session_type [@key "type"]
+                    ; sdp          : string
+                    } [@@deriving yojson]
+
+      type t = { call_id : string
+               ; answer  : answer
+               ; version : int
+               } [@@deriving yojson]
+    end
+
+    module Hangup = struct
+      type reason = IceFailed | InviteTimeout
+
+      let reason_of_yojson = function
+        | `String "ice_failed"     -> Result.return IceFailed
+        | `String "invite_timeout" -> Result.return InviteTimeout
+        | `String s -> Result.fail ("Reason not a valid enum value: " ^ s)
+        | _         -> Result.fail "Reason field was not a string."
+
+      let reason_to_yojson = function
+        | IceFailed     -> `String "ice_failed"
+        | InviteTimeout -> `String "invite_timeout"
+
+      type t = { call_id : string
+               ; version : int
+               ; reason : reason option [@default None]
+               } [@@deriving yojson]
+    end
+
+    type t =
+      | Invite of Invite.t
+      | Candidates of Candidates.t
+      | Answer of Answer.t
+      | Hangup of Hangup.t
+
+    let invite m     = Invite m
+    let candidates m = Candidates m
+    let answer m     = Answer m
+    let hangup m     = Hangup m
+
+    let to_m_type = function
+      | Invite     _ -> "m.call.invite"
+      | Candidates _ -> "m.call.candidates"
+      | Answer     _ -> "m.call.answer"
+      | Hangup     _ -> "m.call.hangup"
+
+    let of_yojson m_type c =
+      match m_type with
+      | "m.call.invite"     -> Invite.of_yojson c     |> Result.map ~f:invite
+      | "m.call.candidates" -> Candidates.of_yojson c |> Result.map ~f:candidates
+      | "m.call.answer"     -> Answer.of_yojson c     |> Result.map ~f:answer
+      | "m.call.hangup"     -> Hangup.of_yojson c     |> Result.map ~f:hangup
+      | _                   -> Result.fail "Unknown call event type."
+
+    let to_yojson = function
+      | Invite     c -> Invite.to_yojson c
+      | Candidates c -> Candidates.to_yojson c
+      | Answer     c -> Answer.to_yojson c
+      | Hangup     c -> Hangup.to_yojson c
+  end
+
   module Content = struct
     type t =
       | Message of Message.t
       | Redaction of Redaction.content
       | Encrypted of Encrypted.t
       | Sticker of Sticker.t
+      | Call of Call.t
 
-    let message r   = Message r
-    let redaction r = Redaction r
-    let encrypted r = Encrypted r
-    let sticker r   = Sticker r
+    let message e   = Message e
+    let redaction e = Redaction e
+    let encrypted e = Encrypted e
+    let sticker e   = Sticker e
+    let call e      = Call e
 
     let to_m_type = function
       | Message   _ -> "m.room.message"
       | Redaction _ -> "m.room.redaction"
       | Encrypted _ -> "m.room.encrypted"
       | Sticker   _ -> "m.sticker"
+      | Call      c -> Call.to_m_type c
+
+    let is_call m = String.is_prefix m ~prefix:"m.call"
 
     let of_yojson m_type c =
       let open Result in
@@ -964,6 +1076,7 @@ module Room = struct
       | "m.room.redaction" -> Redaction.content_of_yojson c >>| redaction
       | "m.room.encrypted" -> Encrypted.of_yojson c         >>| encrypted
       | "m.sticker"        -> Sticker.of_yojson c           >>| sticker
+      | m when is_call m   -> Call.of_yojson m c            >>| call
       | m                  -> Result.fail ("Unknown matrix type: " ^ m)
 
     let to_yojson = function
@@ -971,6 +1084,7 @@ module Room = struct
       | Redaction c -> Redaction.content_to_yojson c
       | Encrypted c -> Encrypted.to_yojson c
       | Sticker   c -> Sticker.to_yojson c
+      | Call      c -> Call.to_yojson c
   end
 
   type t = { m_type           : string

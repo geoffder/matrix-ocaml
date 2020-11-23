@@ -12,321 +12,273 @@ open Yojson_helpers
 module Room      = Event_room.Room
 module RoomState = Event_room.RoomState
 
-module Call = struct
-  module Invite = struct
-    type session_type = Offer
-
-    let session_type_of_yojson = function
-      | `String "offer" -> Result.return Offer
-      | `String s       -> Result.fail ("Type of session was not offer: " ^ s)
-      | _               -> Result.fail "Type of session missing / not a string."
-
-    type offer = { session_type : session_type [@key "type"]
-                 ; sdp          : string
-                 } [@@deriving of_yojson]
-
-    type t = { call_id : string
-             ; offer : offer
-             ; version : int
-             ; lifetime : int
-             } [@@deriving of_yojson]
+module Ephemeral = struct
+  module Typing = struct
+    type t = { user_ids : string list } [@@deriving of_yojson]
   end
 
-  module Candidates = struct
-    type candidate = { sdpMid        : string
-                     ; sdpMLineIndex : int
-                     ; candidate     : string
-                     } [@@deriving of_yojson]
+  module Receipt = struct
+    (* NOTE: Ephemeral event. *)
+    type receipt = { ts : int option [@default None] } [@@deriving of_yojson]
 
-    type t = { call_id    : string
-             ; candidates : candidate list
-             ; version    : int
-             } [@@deriving of_yojson]
-  end
+    type users = receipt StringMap.t [@@deriving of_yojson]
 
-  module Answer = struct
-    type session_type = Answer
+    type receipts =
+      { read : users option [@key "m.read"] [@default None] } [@@deriving of_yojson]
 
-    let session_type_of_yojson = function
-      | `String "answer" -> Result.return Answer
-      | `String s        -> Result.fail ("Type of session was not answer: " ^ s)
-      | _                -> Result.fail "Type of session missing / not string."
-
-    type answer = { session_type : session_type [@key "type"]
-                  ; sdp          : string
-                  } [@@deriving of_yojson]
-
-    type t = { call_id : string
-             ; answer  : answer
-             ; version : int
-             } [@@deriving of_yojson]
-  end
-
-  module Hangup = struct
-    type reason = IceFailed | InviteTimeout
-
-    let reason_of_yojson = function
-      | `String "ice_failed"     -> Result.return IceFailed
-      | `String "invite_timeout" -> Result.return InviteTimeout
-      | `String s -> Result.fail ("Reason not a valid enum value: " ^ s)
-      | _         -> Result.fail "Reason field was not a string."
-
-    type t = { call_id : string
-             ; version : int
-             ; reason : reason option [@default None]
-             } [@@deriving of_yojson]
+    (* map from event_id to map from user_id to timestamp *)
+    type t = receipts StringMap.t [@@deriving of_yojson]
   end
 
   module Content = struct
     type t =
-      | Invite of Invite.t
-      | Candidates of Candidates.t
-      | Answer of Answer.t
-      | Hangup of Hangup.t
+      | Typing of Typing.t
+      | Receipt of Receipt.t
 
-    let invite m     = Invite m
-    let candidates m = Candidates m
-    let answer m     = Answer m
-    let hangup m     = Hangup m
+    let typing e   = Typing e
+    let receipt e  = Receipt e
 
     let of_yojson m_type c =
+      let open Result.Monad_infix in
       match m_type with
-      | "m.call.invite"     -> Invite.of_yojson c     |> Result.map ~f:invite
-      | "m.call.candidates" -> Candidates.of_yojson c |> Result.map ~f:candidates
-      | "m.call.answer"     -> Answer.of_yojson c     |> Result.map ~f:answer
-      | "m.call.hangup"     -> Hangup.of_yojson c     |> Result.map ~f:hangup
-      | _                   -> Result.fail "Unknown call event type."
-
+      | "m.typing"   -> Typing.of_yojson c   >>| typing
+      | "m.receipt"  -> Receipt.of_yojson c  >>| receipt
+      | m            -> Result.fail ("Unknown matrix type: " ^ m)
   end
 
-  module Common = struct
-    type unsigned = { age              : int option    [@default None]
-                    ; redacted_because : string option [@default None]
-                    ; transaction_id   : string option [@default None]
-                    } [@@deriving of_yojson]
-
-    type t = { m_type           : string [@key "type"]
-             ; event_id         : string
-             ; sender           : string
-             ; origin_server_ts : int
-             ; unsigned         : unsigned option [@default None]
-             ; room_id          : string
-             } [@@deriving of_yojson { strict = false }]
-  end
-
-  type t = Common.t * Content.t
+  type t = { m_type  : string
+           ; content : Content.t
+           ; room_id : string option
+           }
 
   let of_yojson j =
-    let open Result in
-    Common.of_yojson j >>= fun com ->
-    let content = U.member "content" j |> Content.of_yojson com.m_type in
-    content >>| fun c -> com, c
+    let open Result.Monad_infix in
+    U.member "type" j |> string_of_yojson >>= fun m_type  ->
+    U.member "room_id" j
+    |> opt_of_yojson string_of_yojson     >>= fun room_id ->
+    U.member "content" j
+    |> Content.of_yojson m_type           >>| fun content ->
+    { m_type; content; room_id }
 end
 
 module Presence = struct
   type content = { avatar_url       : string option    [@default None]
                  ; displayname      : string option    [@default None]
-                 ; last_active_ago  : int option       [@default None] (* in milliseconds *)
+                 ; last_active_ago  : int option       [@default None]
                  ; presence         : Types.Presence.t
                  ; currently_active : bool option      [@default None]
                  ; status_msg       : string option    [@default None]
                  } [@@deriving of_yojson]
 
   type t = { m_type  : string [@key "type"]
-           ; sender  : string  (* indicates user that this applies to *)
+           ; sender  : string
            ; content : content
            } [@@deriving of_yojson]
 end
 
-module Typing = struct
-  (* NOTE: An "Ephemeral" event. *)
-  type content = { user_ids : string list } [@@deriving of_yojson]
+module AccountData = struct
+  module Direct = struct
+    (* map from user_id to list of room_ids indicating what rooms are considered
+     * "direct" rooms for that user. *)
+    type t = string list StringMap.t [@@deriving of_yojson]
+  end
 
-  type t = { m_type  : string [@key "type"]
-           ; room_id : string option [@default None]
-           ; content : content
-           } [@@deriving of_yojson]
-end
+  module FullyRead = struct
+    type t = { event_id : string } [@@deriving of_yojson]
+  end
 
-module Receipt = struct
-  (* NOTE: Ephemeral event. *)
-  type receipt = { ts : int option [@default None] } [@@deriving of_yojson]
+  module PushRules = struct
+    type push_condition = { kind    : string
+                          ; key     : string option [@default None]
+                          ; pattern : string option [@default None]
+                          ; is      : string option [@default None]
+                          } [@@deriving of_yojson]
 
-  type users = receipt StringMap.t [@@deriving of_yojson]
+    (* NOTE: I've seen string and bool for value so far. Consider change to
+     *  something other than json when I have more complete picture. *)
+    type action =
+      | Action of string
+      | Tweak of { set_tweak : string; value : Yojson.Safe.t }
 
-  type receipts =
-    { read : users option [@key "m.read"] [@default None] } [@@deriving of_yojson]
+    let action_of_yojson = function
+      | `String s -> Action s |> Result.return
+      | `Assoc _ as assoc ->
+        let value = U.member "value" assoc in
+        U.member "set_tweak" assoc
+        |> U.to_string_option
+        |> Result.of_option ~error:"Invalid push_rule action Tweak."
+        |> Result.map ~f:(fun set_tweak -> Tweak { set_tweak; value })
+      | _ -> Result.fail "Invalid push_rule action Tweak."
 
-  (* map from event_id to map from user_id to timestamp *)
-  type content = receipts StringMap.t [@@deriving of_yojson]
+    type push_rule = { actions    : action list
+                     ; default    : bool
+                     ; enabled    : bool
+                     ; rule_id    : string
+                     ; conditions : push_condition list option [@default None]
+                     ; pattern    : string option              [@default None]
+                     } [@@deriving of_yojson]
 
-  type t = { m_type  : string [@key "type"]
-           ; room_id : string option [@default None]
-           ; content : content
-           } [@@deriving of_yojson]
-end
-
-module FullyRead = struct
-  type content = { event_id : string } [@@deriving of_yojson]
-
-  type t = { m_type  : string [@key "type"]
-           ; room_id : string option [@default None]
-           ; content : content
-           } [@@deriving of_yojson]
-end
-
-module IdentityServer = struct
-  type content = { base_url : string option [@default None] } [@@deriving of_yojson]
-
-  type t = { m_type : string [@key "type"]
-           ; content : content
-           } [@@deriving of_yojson]
-end
-
-module Direct = struct
-  (* map from user_id to list of room_ids indicating what rooms are considered
-   * "direct" rooms for that user. *)
-  type content = (string list) StringMap.t [@@deriving of_yojson]
-
-  type t = { m_type  : string [@key "type"]
-           ; content : content
-           } [@@deriving of_yojson]
-end
-
-module IgnoredUserList = struct
-  (* NOTE: The yojson object is empty at this time according to spec. *)
-  type ignored_users = Yojson.Safe.t StringMap.t [@@deriving of_yojson]
-
-  type content = { ignored_users : ignored_users } [@@deriving of_yojson]
-
-  type t = { m_type  : string [@key "type"]
-           ; content : content
-           } [@@deriving of_yojson]
-end
-
-module Tag = struct
-  (* map from user defined tags to an order value that give the relative
-   * position of the room under the given tag.
-   * NOTE: Does this go in the room module since it pertains to a particular
-   *  room? It's a bit unclear from what I've read so far where I should expect
-   * this event to pop up. *)
-  type tag = { order : float option [@default None] } [@@deriving of_yojson]
-
-  type tag_map = tag StringMap.t [@@deriving of_yojson]
-
-  type content = { tags : tag_map } [@@deriving of_yojson]
-
-  type t = { m_type  : string [@key "type"]
-           ; content : content
-           } [@@deriving of_yojson]
-end
-
-module PushRules = struct
-  type push_condition = { kind    : string
-                        ; key     : string option [@default None]
-                        ; pattern : string option [@default None]
-                        ; is      : string option [@default None]
-                        } [@@deriving of_yojson]
-
-  (* NOTE: I've seen string and bool for value so far. Consider change to
-   *  something other than json when I have more complete picture. *)
-  type action =
-    | Action of string
-    | Tweak of { set_tweak : string; value : Yojson.Safe.t }
-
-  let action_of_yojson = function
-    | `String s -> Action s |> Result.return
-    | `Assoc _ as assoc ->
-      let value = U.member "value" assoc in
-      U.member "set_tweak" assoc
-      |> U.to_string_option
-      |> Result.of_option ~error:"Invalid push_rule action Tweak."
-      |> Result.map ~f:(fun set_tweak -> Tweak { set_tweak; value })
-    | _ -> Result.fail "Invalid push_rule action Tweak."
-
-  type push_rule = { actions    : action list
-                   ; default    : bool
-                   ; enabled    : bool
-                   ; rule_id    : string
-                   ; conditions : push_condition list option [@default None]
-                   ; pattern    : string option              [@default None]
+    type ruleset = { content   : push_rule list option [@default None]
+                   ; override  : push_rule list option [@default None]
+                   ; room      : push_rule list option [@default None]
+                   ; sender    : push_rule list option [@default None]
+                   ; underride : push_rule list option [@default None]
                    } [@@deriving of_yojson]
 
-  type ruleset = { content   : push_rule list option [@default None]
-                 ; override  : push_rule list option [@default None]
-                 ; room      : push_rule list option [@default None]
-                 ; sender    : push_rule list option [@default None]
-                 ; underride : push_rule list option [@default None]
-                 } [@@deriving of_yojson]
+    type devices = ruleset StringMap.t [@@deriving of_yojson]
 
-  type devices = ruleset StringMap.t [@@deriving of_yojson]
+    type t = { global : ruleset
+             ; device : devices option [@default None]
+             } [@@deriving of_yojson { strict = false }]
+  end
 
-  type content = { global : ruleset
-                 ; device : devices option [@default None]
-                 } [@@deriving of_yojson { strict = false }]
+  module Tag = struct
+    (* map from user defined tags to an order value that give the relative
+     * position of the room under the given tag. *)
+    type tag = { order : float option [@default None] } [@@deriving of_yojson]
 
-  type t = { m_type : string [@key "type"]
-           ; content : content
-           } [@@deriving of_yojson]
+    type tag_map = tag StringMap.t [@@deriving of_yojson]
+
+    type t = { tags : tag_map } [@@deriving of_yojson]
+  end
+
+  module IgnoredUserList = struct
+    (* NOTE: The yojson object is empty at this time according to spec.
+     * TODO: Custom of yojson that will make ignored users a set instead. *)
+    type ignored_users = Yojson.Safe.t StringMap.t [@@deriving of_yojson]
+
+    type t = { ignored_users : ignored_users } [@@deriving of_yojson]
+  end
+
+  module IdentityServer = struct
+    type t = { base_url : string option [@default None] } [@@deriving of_yojson]
+  end
+
+  module Widgets = struct
+    (* TODO: Here is an example from a sync_response
+       "type":"m.widgets",
+       "content":{
+          "75ffef59-9ddc-475e-802a-27474853d494":{
+             "content":{
+                "type":"m.stickerpicker",
+                "url":"https://scalar.vector.im/api/widgets/id/75ffef59-9ddc-475e-802a-27474853d494/stickers.html",
+                "name":"Stickerpack"
+             },
+             "sender":"@beheddard:matrix.org",
+             "state_key":"75ffef59-9ddc-475e-802a-27474853d494",
+             "type":"m.widget",
+             "id":"75ffef59-9ddc-475e-802a-27474853d494"
+          }
+       }
+    *)
+  end
+
+  module Content = struct
+    type t =
+      | Direct of Direct.t
+      | FullyRead of FullyRead.t
+      | PushRules of PushRules.t
+      | Tag of Tag.t
+      | IgnoredUserList of IgnoredUserList.t
+      | IdentityServer of IdentityServer.t
+      | Unknown of Yojson.Safe.t
+
+    let direct e            = Direct e
+    let fully_read e        = FullyRead e
+    let push_rules e        = PushRules e
+    let tag e               = Tag e
+    let ignored_user_list e = IgnoredUserList e
+    let identity_server e   = IdentityServer e
+    let unknown e           = Unknown e
+
+    let of_yojson m_type c =
+      let open Result.Monad_infix in
+      match m_type with
+      | "m.direct"            -> Direct.of_yojson c          >>| direct
+      | "m.fully_read"        -> FullyRead.of_yojson c       >>| fully_read
+      | "m.push_rules"        -> PushRules.of_yojson c       >>| push_rules
+      | "m.tag"               -> Tag.of_yojson c             >>| tag
+      | "m.ignored_user_list" -> IgnoredUserList.of_yojson c >>| ignored_user_list
+      | "m.identity_server"   -> IdentityServer.of_yojson c  >>| identity_server
+      | _                     -> Result.return (unknown c)
+  end
+
+  type t = { m_type  : string; content : Content.t }
+
+  let of_yojson j =
+    let open Result.Monad_infix in
+    U.member "type" j |> string_of_yojson >>= fun m_type  ->
+    U.member "content" j
+    |> Content.of_yojson m_type           >>| fun content ->
+    { m_type; content }
+end
+
+module Timeline = struct
+  type t =
+    | Msg of Room.t
+    | State of RoomState.t
+
+  let msg e   = Msg e
+  let state e = State e
+
+  let is_state j =
+    match U.member "state_key" j with
+    | `Null -> false
+    | _     -> true
+
+  let of_yojson j =
+    let open Result.Monad_infix in
+    if is_state j
+    then RoomState.of_yojson j >>| state
+    else Room.of_yojson j      >>| msg
 end
 
 type t =
   | Room of Room.t
   | RoomState of RoomState.t
-  | Call of Call.t
+  | Ephemeral of Ephemeral.t
   | Presence of Presence.t
-  | Typing of Typing.t
-  | Receipt of Receipt.t
-  | FullyRead of FullyRead.t
-  | IdentityServer of IdentityServer.t
-  | Direct of Direct.t
-  | IgnoredUserList of IgnoredUserList.t
-  | Tag of Tag.t
-  | PushRules of PushRules.t
+  | AccountData of AccountData.t
   | Unknown of Yojson.Safe.t
 
-let room e              = Room e
-let room_state e        = RoomState e
-let call e              = Call e
-let presence e          = Presence e
-let typing e            = Typing e
-let receipt e           = Receipt e
-let fully_read e        = FullyRead e
-let identity_server e   = IdentityServer e
-let direct e            = Direct e
-let ignored_user_list e = IgnoredUserList e
-let tag e               = Tag e
-let push_rules e        = PushRules e
-let unknown e           = Unknown e
+let room e            = Room e
+let room_state e      = RoomState e
+let ephemeral e       = Ephemeral e
+let presence e        = Presence e
+let account_data e    = AccountData e
+let unknown e         = Unknown e
 
-let is_room_type m =
+let is_room m =
   String.is_prefix m ~prefix:"m.room."
   || String.equal m "m.sticker"
-  || String.equal m "im.vector.modular.widgets"
-  || String.equal m "org.matrix.room.preview_urls"
 
 let is_state j =
   match U.member "state_key" j with
   | `Null -> false
   | _     -> true
 
-let is_call_type m = String.is_prefix m ~prefix:"m.call."
+let is_ephemeral m =
+  String.equal m "m.typing"
+  || String.equal m "m.receipt"
+
+let is_account m =
+  match m with
+  | "m.direct"
+  | "m.fully_read"
+  | "m.push_rules"
+  | "m.tag"
+  | "m.ignored_user_list"
+  | "m.identity_server" -> true
+  | _                   -> false
 
 let of_yojson j =
   let open Result in
   match U.member "type" j |> U.to_string_option with
-  | Some _ when is_state j     -> RoomState.of_yojson j       >>| room_state
-  | Some m when is_room_type m -> Room.of_yojson j            >>| room
-  | Some m when is_call_type m -> Call.of_yojson j            >>| call
-  | Some "m.presence"          -> Presence.of_yojson j        >>| presence
-  | Some "m.typing"            -> Typing.of_yojson j          >>| typing
-  | Some "m.receipt"           -> Receipt.of_yojson j         >>| receipt
-  | Some "m.fully_read"        -> FullyRead.of_yojson j       >>| fully_read
-  | Some "m.identity_server"   -> IdentityServer.of_yojson j  >>| identity_server
-  | Some "m.direct"            -> Direct.of_yojson j          >>| direct
-  | Some "m.ignored_user_list" -> IgnoredUserList.of_yojson j >>| ignored_user_list
-  | Some "m.tag"               -> Tag.of_yojson j             >>| tag
-  | Some "m.push_rules"        -> PushRules.of_yojson j       >>| push_rules
+  | Some _ when is_state j     -> RoomState.of_yojson j   >>| room_state
+  | Some m when is_room m      -> Room.of_yojson j        >>| room
+  | Some m when is_ephemeral m -> Ephemeral.of_yojson j   >>| ephemeral
+  | Some m when is_account m   -> AccountData.of_yojson j >>| account_data
+  | Some "m.presence"          -> Presence.of_yojson j    >>| presence
   (* | Some s                     -> Result.fail ("Invalid event type: " ^ s) *)
-  | Some _                     -> Result.return j             >>| unknown
+  | Some _                     -> Result.return j         >>| unknown
   | None                       -> Result.fail "Missing event type field."
