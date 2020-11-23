@@ -182,7 +182,7 @@ let sync ?since ?timeout ?filter ?(full_state=false) ?set_presence t =
 (* TODO: Handling encryption. *)
 let room_send ?tx_id id event t =
   logged_in t >>=? fun token ->
-  let body = Event.Room.Content.to_yojson event in
+  let body   = Event.Room.Content.to_yojson event in
   let m_type = Event.Room.Content.to_m_type event in
   tx_id
   |> Option.value ~default:(uuid_string ())
@@ -196,12 +196,12 @@ let room_get_event room_id event_id t =
   Api.room_get_event token room_id event_id
   |> send t >>=?
   cohttp_response_to_yojson >>|=?
-  Responses.of_yojson Event.Room.of_yojson
+  Responses.of_yojson Event.Timeline.of_yojson
 
 let room_put_state ?state_key room_id event t =
   logged_in t >>=? fun token ->
-  let body   = Event.Room.Content.to_yojson event in
-  let m_type = Event.Room.Content.to_m_type event in
+  let body   = Event.RoomState.Content.to_yojson event in
+  let m_type = Event.RoomState.Content.to_m_type event in
   Api.room_put_state ?state_key token room_id m_type body
   |> send t >>=?
   cohttp_response_to_yojson >>|=?
@@ -219,7 +219,7 @@ let room_get_state_event room_id event_type state_key t =
   Api.room_get_state_event token room_id event_type state_key
   |> send t >>=?
   cohttp_response_to_yojson >>|=?
-  Responses.of_yojson (Event.Room.Content.of_yojson event_type)
+  Responses.of_yojson (Event.RoomState.Content.of_yojson event_type)
 
 let room_redact ?reason ?tx_id room_id event_id t =
   logged_in t >>=? fun token ->
@@ -437,9 +437,8 @@ let send_image ?monitor pth room_id t =
                      |> Option.value ~default:"png"
                      |> ( ^ ) "image/" in
   upload ~content_type ~filename provider t >>=? fun { content_uri } ->
-  let open Event.Room in
-  let msg = Message.Image.create ~url:content_uri filename |> Message.image in
-  room_send room_id (Content.Message msg) t
+  let msg = Event.Room.Message.(Image.create ~url:content_uri filename |> image) in
+  room_send room_id (Event.Room.Content.Message msg) t
 
 let room_upload ?monitor pth room_id t =
   let open File_helpers in
