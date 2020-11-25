@@ -28,6 +28,13 @@ module Account = struct
   let generate_one_time_keys t n = Olm.Account.generate_one_time_keys t.acc n
 
   let one_time_keys t = Olm.Account.one_time_keys t.acc
+
+  let top_up_one_time_keys t uploaded_key_count =
+    max_one_time_keys t >>= fun max_keys ->
+    let n = max_keys / 2 - uploaded_key_count in
+    if n <= 0
+    then Result.fail (`Protocol "Can't share any keys, too many already shared.")
+    else generate_one_time_keys t n
 end
 
 module Session = struct
