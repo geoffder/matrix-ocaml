@@ -21,7 +21,7 @@ let message_index_store_size           = 100000
 type t = { user_id                 : string
          ; device_id               : string
          ; account                 : Account.t
-         ; uploaded_key_count      : int
+         ; uploaded_key_count      : int option
          ; users_for_key_query     : (string, String.comparator_witness) Set.t
          ; device_store            : DeviceStore.t
          ; session_store           : SessionStore.t
@@ -69,4 +69,17 @@ module Payloads = struct
     in
     Account.one_time_keys t.account >>= fun { curve25519 = keys } ->
     Neolm_utils.map_fold_result ~init:[] ~f keys >>| yo_assoc
+
+  let share_keys t =
+    if t.account.shared then
+      Account.top_up_one_time_keys t.account 0 >>= fun _ ->
+      one_time_keys t >>= fun one_time ->
+      device_keys t   >>| fun dev ->
+      `Assoc [ ("device_keys", dev); ("one_time_keys", one_time) ]
+    else
+      Result.of_option t.uploaded_key_count
+        ~error:(`Protocol "The uploaded key count is not known.") >>= fun count ->
+      Account.top_up_one_time_keys t.account count >>= fun _ ->
+      one_time_keys t >>| fun one_time ->
+      `Assoc [ ("one_time_keys", one_time) ]
 end
