@@ -12,4 +12,4 @@
             base64
             yojson
             ppx_deriving_yojson.runtime)
- (preprocess (pps ppx_deriving_yojson)))
+ (preprocess (pps ppx_jane ppx_deriving_yojson)))

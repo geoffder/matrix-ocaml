@@ -1,85 +1,159 @@
 open Core
 open Yojson_helpers
-open! Result.Monad_infix
-
+open Result.Monad_infix
+open Result.Let_syntax
 open Neolm_devices
 open Neolm_sessions
 open Neolm_key_requests
 module Sas = Neolm_sas
 
-let olm_algorithm                      = "m.olm.v1.curve25519-aes-sha2"
-let megolm_algorithm                   = "m.megolm.v1.aes-sha2"
-let algorithms                         = [ olm_algorithm; megolm_algorithm ]
-let max_sas_life                       = Time.Span.of_min 20.0
-let unwedging_interval                 = Time.Span.of_min 60.0
+let olm_algorithm = "m.olm.v1.curve25519-aes-sha2"
+let megolm_algorithm = "m.megolm.v1.aes-sha2"
+let algorithms = [ olm_algorithm; megolm_algorithm ]
+let max_sas_life = Time.Span.of_min 20.0
+let unwedging_interval = Time.Span.of_min 60.0
 let max_to_device_messages_per_request = 20
-let message_index_store_size           = 100000
+let message_index_store_size = 100000
 
 (* NOTE: recieved_key_requests might need to be ToDevice msg since I might require
  * the sender. Though I could easily just have a tuple of sender and request or something
  * (or break down and make a local type for it here...) *)
-type t = { user_id                 : string
-         ; device_id               : string
-         ; account                 : Account.t
-         ; uploaded_key_count      : int option
-         ; users_for_key_query     : (string, String.comparator_witness) Set.t
-         ; device_store            : DeviceStore.t
-         ; session_store           : SessionStore.t
-         ; inbound_group_store     : InboundGroupStore.t
-         ; outbound_group_sessions : OutboundGroupSession.t StringMap.t
-         ; tracked_users           : (string, String.comparator_witness) Set.t
-         ; outgoing_key_requests   : OutgoingKeyRequest.t StringMap.t
-         ; received_key_requests   : IncomingKeyRequest.t StringMap.t
-         }
+type t =
+  { user_id : string
+  ; device_id : string
+  ; account : Account.t
+  ; uploaded_key_count : int option
+  ; users_for_key_query : (string, String.comparator_witness) Set.t
+  ; device_store : DeviceStore.t
+  ; session_store : SessionStore.t
+  ; inbound_group_store : InboundGroupStore.t
+  ; outbound_group_sessions : OutboundGroupSession.t StringMap.t
+  ; tracked_users : (string, String.comparator_witness) Set.t
+  ; outgoing_key_requests : OutgoingKeyRequest.t StringMap.t
+  ; received_key_requests : IncomingKeyRequest.t StringMap.t
+  }
 
 module Payloads = struct
-  let olm_algorithm    = `String olm_algorithm
+  let olm_algorithm = `String olm_algorithm
   let megolm_algorithm = `String megolm_algorithm
-  let algorithms       = `List (List.map ~f:yo_string algorithms)
-
+  let algorithms = `List (List.map ~f:yo_string algorithms)
   let sign_json account j = Api.canonical_json j |> Account.sign account
 
   let device_keys t =
-    Account.identity_keys t.account >>= fun ids ->
-    let keys = [ ("algorithms", algorithms)
-               ; ("device_id", `String t.device_id)
-               ; ("user_id", `String t.user_id)
-               ; ("keys", [ ("curve25519:" ^ t.device_id, `String ids.curve25519)
-                          ; ("ed25519:" ^ t.device_id, `String ids.ed25519)
-                          ] |> yo_assoc)
-               ] |> yo_assoc
+    let%bind ids = Account.identity_keys t.account in
+    let keys =
+      [ "algorithms", algorithms
+      ; "device_id", `String t.device_id
+      ; "user_id", `String t.user_id
+      ; ( "keys"
+        , [ "curve25519:" ^ t.device_id, `String ids.curve25519
+          ; "ed25519:" ^ t.device_id, `String ids.ed25519
+          ]
+          |> yo_assoc )
+      ]
+      |> yo_assoc
     in
-    sign_json t.account keys >>| fun signature ->
-    `Assoc [
-      ("signatures", `Assoc [
-          ("ed25519:" ^ t.device_id, `String signature) ]) ]
+    let%map signature = sign_json t.account keys in
+    `Assoc [ "signatures", `Assoc [ "ed25519:" ^ t.device_id, `String signature ] ]
     |> U.combine keys
 
   let one_time_keys t =
     let f acc ~key ~data =
-      sign_json t.account (`Assoc [ ("key", `String data) ]) >>| fun signature ->
-      let signatures = [ (t.user_id, [ ("ed25519:" ^ t.device_id, `String signature)
-                                     ] |> yo_assoc)
-                       ] |> yo_assoc
+      let%map signature = sign_json t.account (`Assoc [ "key", `String data ]) in
+      let signatures =
+        [ t.user_id, [ "ed25519:" ^ t.device_id, `String signature ] |> yo_assoc ]
+        |> yo_assoc
       in
-      ("signed_curve25519:" ^ key, [ ("key", `String data)
-                                   ; ("signatures", signatures)
-                                   ] |> yo_assoc)
+      ( "signed_curve25519:" ^ key
+      , [ "key", `String data; "signatures", signatures ] |> yo_assoc )
       :: acc
     in
-    Account.one_time_keys t.account >>= fun { curve25519 = keys } ->
+    let%bind { curve25519 = keys } = Account.one_time_keys t.account in
     Neolm_utils.map_fold_result ~init:[] ~f keys >>| yo_assoc
 
   let share_keys t =
-    if t.account.shared then
-      Account.top_up_one_time_keys t.account 0 >>= fun _ ->
-      one_time_keys t >>= fun one_time ->
-      device_keys t   >>| fun dev ->
-      `Assoc [ ("device_keys", dev); ("one_time_keys", one_time) ]
-    else
-      Result.of_option t.uploaded_key_count
-        ~error:(`Protocol "The uploaded key count is not known.") >>= fun count ->
-      Account.top_up_one_time_keys t.account count >>= fun _ ->
-      one_time_keys t >>| fun one_time ->
-      `Assoc [ ("one_time_keys", one_time) ]
+    if t.account.shared
+    then (
+      let%map _ = Account.top_up_one_time_keys t.account 0
+      and one_time = one_time_keys t
+      and dev = device_keys t in
+      `Assoc [ "device_keys", dev; "one_time_keys", one_time ] )
+    else (
+      let%bind count =
+        Result.of_option
+          t.uploaded_key_count
+          ~error:(`Protocol "The uploaded key count is not known.")
+      in
+      let%map _ = Account.top_up_one_time_keys t.account count
+      and one_time = one_time_keys t in
+      `Assoc [ "one_time_keys", one_time ] )
 end
+
+let update_tracked_users = ()
+let add_changed_users = ()
+let should_upload_keys = ()
+let user_fully_verified = ()
+let olm_encrypt = ()
+let queue_dummy_message = ()
+let handle_to_device_event = ()
+let handle_key_requests = ()
+let encrypt_forwarding_key = ()
+let reshare_key = ()
+let share_with_ourselves = ()
+let get_active_key_requests = ()
+let continue_key_share = ()
+let cancel_key_share = ()
+let collect_single_key_share = ()
+let collect_key_requests = ()
+let handle_key_claiming = ()
+let handle_key_query = ()
+let mark_to_device_message_as_sent = ()
+let handle_response = ()
+let create_inbound_session = ()
+let blacklist_device = ()
+let unblacklist_device = ()
+let verify_device = ()
+let is_device_verified = ()
+let is_device_blacklisted = ()
+let unverify_device = ()
+let ignore_device = ()
+let unignore_device = ()
+let is_device_ignored = ()
+let create_session = ()
+let create_group_session = ()
+let create_outbound_group_session = ()
+let get_missing_sessions = ()
+let get_users_for_key_claiming = ()
+let mark_device_for_unwedging = ()
+let try_decrypt = ()
+let verify_olm_payload = ()
+let handle_room_key_event = ()
+let handle_forwarded_room_key_event = ()
+let handle_olm_event = ()
+let message_index_ok = ()
+let check_if_wedged = ()
+let decrypt_megolm_no_error = ()
+let decrypt_megolm_event = ()
+let decrypt_event = ()
+let decrypt = ()
+let rotate_outbound_group_session = ()
+let should_share_group_session = ()
+let group_encrypt = ()
+let share_group_session_parallel = ()
+let share_group_session = ()
+let load = ()
+let save_session = ()
+let save_inbound_group_session = ()
+let save_account = ()
+let sign_json = ()
+let verify_json = ()
+let mark_keys_as_published = ()
+let export_keys_static = ()
+let export_keys = ()
+let _import_group_session = ()
+let import_keys_static = ()
+let import_keys = ()
+let clear_verifications = ()
+let create_sas = ()
+let get_active_sas = ()
+let handle_key_verification = ()
