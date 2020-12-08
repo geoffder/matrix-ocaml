@@ -1,5 +1,4 @@
 open Core
-open Result.Monad_infix
 open Result.Let_syntax
 
 let header = "-----BEGIN MEGOLM SESSION DATA-----\n"

@@ -67,7 +67,6 @@ module DeviceStore = struct
   let devices t user_id = Map.find t user_id |> Option.map ~f:Map.keys
 
   let add t (d : Device.t) =
-    let open Result in
     match Map.find t d.user_id with
     | Some u ->
       let%map.Result data =

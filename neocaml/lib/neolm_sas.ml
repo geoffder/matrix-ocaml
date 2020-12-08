@@ -1,5 +1,4 @@
 open! Core
-open Result.Monad_infix
 open Result.Let_syntax
 open Neolm_devices
 open Yojson_helpers

@@ -1,6 +1,5 @@
 open Core
 open Yojson_helpers
-open Result.Monad_infix
 open Result.Let_syntax
 open Neolm_devices
 open Neolm_sessions
