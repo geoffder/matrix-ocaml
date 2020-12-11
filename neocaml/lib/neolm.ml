@@ -30,6 +30,7 @@ type t =
   ; tracked_users : (string, String.comparator_witness) Set.t
   ; outgoing_key_requests : OutgoingKeyRequest.t StringMap.t
   ; received_key_requests : IncomingKeyRequest.t StringMap.t
+  ; key_request_from_untrusted : IncomingKeyRequest.t StringMap.t
   }
 
 module Payloads = struct
@@ -88,10 +89,22 @@ module Payloads = struct
       `Assoc [ "one_time_keys", one_time ] )
 end
 
+(* Needs Room implemented first. *)
 let update_tracked_users = ()
-let add_changed_users = ()
-let should_upload_keys = ()
-let user_fully_verified = ()
+
+let add_changed_users t users =
+  { t with users_for_key_query = Set.union t.users_for_key_query users }
+
+let should_upload_keys t = not (Set.is_empty t)
+
+let user_fully_verified t user_id =
+  DeviceStore.active_user_devices t.device_store user_id
+  |> function
+  | None    -> false
+  | Some ds ->
+    (* NOTE: This is a bit different that nio (it looked weird). Check back! *)
+    Sequence.for_all ds ~f:(fun d -> Device.verified d && (not @@ Device.blacklisted d))
+
 let olm_encrypt = ()
 let queue_dummy_message = ()
 let handle_to_device_event = ()
@@ -99,7 +112,13 @@ let handle_key_requests = ()
 let encrypt_forwarding_key = ()
 let reshare_key = ()
 let share_with_ourselves = ()
-let get_active_key_requests = ()
+
+let get_active_key_requests t user_id device_id =
+  Map.data t.key_request_from_untrusted
+  |> List.filter ~f:(fun e ->
+         String.equal e.sender user_id
+         && String.equal e.request.content.requesting_device_id device_id)
+
 let continue_key_share = ()
 let cancel_key_share = ()
 let collect_single_key_share = ()
@@ -112,8 +131,6 @@ let create_inbound_session = ()
 let blacklist_device = ()
 let unblacklist_device = ()
 let verify_device = ()
-let is_device_verified = ()
-let is_device_blacklisted = ()
 let unverify_device = ()
 let ignore_device = ()
 let unignore_device = ()
