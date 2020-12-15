@@ -105,7 +105,37 @@ let user_fully_verified t user_id =
     (* NOTE: This is a bit different that nio (it looked weird). Check back! *)
     Sequence.for_all ds ~f:(fun d -> Device.verified d && (not @@ Device.blacklisted d))
 
-let olm_encrypt = ()
+let olm_encrypt t session (recipient_device : Device.t) message =
+  let%bind keys = Olm.Account.identity_keys t.account.acc in
+  let payload =
+    `Assoc
+      [ "sender", `String t.user_id
+      ; "sender_device", `String t.device_id
+      ; "keys", `Assoc [ "ed25519", `String keys.ed25519 ]
+      ; "recipient", `String recipient_device.user_id
+      ; "recipient_keys", `Assoc [ "ed25519", `String recipient_device.keys.ed25519 ]
+      ; "type", `String (Event.Room.Content.to_m_type message)
+      ; "content", Event.Room.Content.to_yojson message
+      ]
+  in
+  (* TODO: SAVE SESSION IN DB AFTER ENCRYPT*)
+  let%map olm_message = Session.encrypt session (Api.canonical_json payload) in
+  (* NOTE: Not positive that this should be int. Should add a direct to int to the
+   * Olm code though *)
+  let msg_type = if Olm.Session.Message.is_pre_key olm_message then 0 else 1 in
+  `Assoc
+    [ "algorithm", `String olm_algorithm
+    ; "sender_key", `String keys.curve25519
+    ; ( "ciphertext"
+      , `Assoc
+          [ ( recipient_device.keys.curve25519
+            , `Assoc
+                [ "type", `Int msg_type
+                ; "body", `String (Olm.Session.Message.ciphertext olm_message)
+                ] )
+          ] )
+    ]
+
 let queue_dummy_message = ()
 let handle_to_device_event = ()
 let handle_key_requests = ()
@@ -120,7 +150,13 @@ let get_active_key_requests t user_id device_id =
          && String.equal e.request.content.requesting_device_id device_id)
 
 let continue_key_share = ()
-let cancel_key_share = ()
+
+let cancel_key_share t (event : IncomingKeyRequest.t) =
+  { t with
+    key_request_from_untrusted =
+      Map.remove t.key_request_from_untrusted event.request.content.request_id
+  }
+
 let collect_single_key_share = ()
 let collect_key_requests = ()
 let handle_key_claiming = ()
